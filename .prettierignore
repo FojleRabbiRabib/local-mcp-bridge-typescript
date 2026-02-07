@@ -1,0 +1,6 @@
+build/
+node_modules/
+*.json
+*.md
+package-lock.json
+pnpm-lock.yaml
