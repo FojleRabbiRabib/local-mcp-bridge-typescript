@@ -9,7 +9,8 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
   server.registerTool(
     'get_project_structure',
     {
-      description: 'Get the file tree structure of a project (respects .gitignore)',
+      description:
+        'Get the complete file tree structure of a project. Automatically respects .gitignore patterns. BEST way to quickly understand project layout without manually browsing directories.',
       inputSchema: z.object({
         path: z.string().describe('Project root path'),
         maxDepth: z.number().optional().describe('Maximum depth to traverse (default: 5)'),
@@ -43,7 +44,8 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
   server.registerTool(
     'analyze_project',
     {
-      description: 'Analyze project to detect language, framework, and dependencies',
+      description:
+        'Automatically detect project language, framework, and dependencies by analyzing configuration files (package.json, requirements.txt, Cargo.toml, etc.). USE THIS to quickly understand what tech stack a project uses before making changes.',
       inputSchema: z.object({
         path: z.string().describe('Project root path'),
       }),
@@ -75,7 +77,8 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
   server.registerTool(
     'find_files',
     {
-      description: 'Find files matching a pattern (glob)',
+      description:
+        'Find files matching a glob pattern (e.g., "*.ts", "**/*.json", "src/**/*.test.ts"). MORE EFFICIENT than manually searching. Use this to locate specific files by pattern when you know the naming convention.',
       inputSchema: z.object({
         path: z.string().describe('Directory to search in'),
         pattern: z.string().describe('File pattern (e.g., "*.ts", "**/*.json")'),
@@ -110,7 +113,8 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
   server.registerTool(
     'get_file_info',
     {
-      description: 'Get file metadata (size, modified time, type)',
+      description:
+        "Get detailed metadata about a file including size, modified/created timestamps, file type, and permissions. USE THIS to check file details before editing to understand what you're working with.",
       inputSchema: z.object({
         path: z.string().describe('File path'),
       }),

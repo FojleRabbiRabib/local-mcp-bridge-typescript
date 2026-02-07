@@ -21,7 +21,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
   server.registerTool(
     'create_task',
     {
-      description: 'Create a new task/todo item',
+      description:
+        'Create a new task/todo item with title, description, priority, tags, and optional due date. Tasks are stored in .mcp-tasks.json in the project root.',
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         title: z.string().describe('Task title'),
@@ -78,7 +79,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
   server.registerTool(
     'list_tasks',
     {
-      description: 'List all tasks/todos',
+      description:
+        'List all tasks/todos with optional filtering by status, priority, or tag. USE THIS to see what work is pending or to track progress.',
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         status: z
@@ -145,7 +147,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
   server.registerTool(
     'update_task',
     {
-      description: 'Update a task',
+      description:
+        "Update an existing task's status, priority, title, or description. USE THIS to mark tasks as in-progress or done, or to modify task details.",
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         id: z.string().describe('Task ID'),
@@ -200,7 +203,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
   server.registerTool(
     'delete_task',
     {
-      description: 'Delete a task',
+      description:
+        'Permanently delete a task by its ID. USE THIS to remove completed or cancelled tasks.',
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         id: z.string().describe('Task ID'),
@@ -245,7 +249,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
   server.registerTool(
     'search_todos',
     {
-      description: 'Search for TODO, FIXME, HACK, NOTE comments in code',
+      description:
+        'Search code for TODO, FIXME, HACK, or NOTE comments. EFFICIENT way to find all pending work, technical debt markers, or important notes scattered across the codebase.',
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         type: z

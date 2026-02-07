@@ -12,7 +12,8 @@ export function registerFormattingTools(
   server.registerTool(
     'format_code',
     {
-      description: 'Format code using prettier or other formatters',
+      description:
+        'Format code using prettier, eslint, black, rustfmt, or gofmt. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
       inputSchema: z.object({
         path: z.string().describe('File or directory path to format'),
         formatter: z
@@ -62,7 +63,8 @@ export function registerFormattingTools(
   server.registerTool(
     'lint_code',
     {
-      description: 'Run linter to check code quality',
+      description:
+        'Run linter (eslint, pylint, flake8, clippy, golangci-lint) to check code quality and find potential issues. USE THIS before committing to catch errors and maintain code quality.',
       inputSchema: z.object({
         path: z.string().describe('File or directory path to lint'),
         linter: z

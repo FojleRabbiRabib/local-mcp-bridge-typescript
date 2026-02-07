@@ -12,7 +12,8 @@ export function registerPackageManagerTools(
   server.registerTool(
     'npm_install',
     {
-      description: 'Install npm dependencies',
+      description:
+        'Install npm dependencies from package.json. Run this after cloning a project or when dependencies change. More efficient than manually running npm install.',
       inputSchema: z.object({
         path: z.string().optional().describe('Project path (default: current directory)'),
         packages: z.array(z.string()).optional().describe('Specific packages to install'),
@@ -40,7 +41,8 @@ export function registerPackageManagerTools(
   server.registerTool(
     'npm_run',
     {
-      description: 'Run npm script from package.json',
+      description:
+        'Run any npm script defined in package.json (e.g., build, test, dev). USE THIS to execute project scripts instead of running commands manually.',
       inputSchema: z.object({
         path: z.string().optional().describe('Project path (default: current directory)'),
         script: z.string().describe('Script name to run'),
@@ -63,7 +65,8 @@ export function registerPackageManagerTools(
   server.registerTool(
     'pip_install',
     {
-      description: 'Install Python packages with pip',
+      description:
+        'Install Python packages. Can install specific packages or all from requirements.txt. USE THIS for Python dependency management.',
       inputSchema: z.object({
         path: z.string().optional().describe('Project path (default: current directory)'),
         packages: z.array(z.string()).optional().describe('Packages to install'),

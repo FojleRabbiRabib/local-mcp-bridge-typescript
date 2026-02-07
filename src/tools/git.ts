@@ -12,7 +12,8 @@ export function registerGitTools(
   server.registerTool(
     'git_status',
     {
-      description: 'Show the working tree status (git status)',
+      description:
+        'Show the working tree status including modified, staged, and untracked files. ALWAYS run this before making commits to see what has changed.',
       inputSchema: z.object({
         path: z.string().optional().describe('Repository path (default: current directory)'),
       }),
@@ -34,7 +35,8 @@ export function registerGitTools(
   server.registerTool(
     'git_log',
     {
-      description: 'Show commit history (git log)',
+      description:
+        'Show commit history with optional limit and oneline format. USE THIS to understand recent changes, project history, or to find specific commits.',
       inputSchema: z.object({
         path: z.string().optional().describe('Repository path (default: current directory)'),
         limit: z.number().optional().describe('Number of commits to show (default: 10)'),
@@ -63,7 +65,8 @@ export function registerGitTools(
   server.registerTool(
     'git_diff',
     {
-      description: 'Show changes between commits, commit and working tree, etc (git diff)',
+      description:
+        'Show line-by-line changes between commits, between commit and working tree, or for a specific file. ESSENTIAL for reviewing what changed before committing or merging.',
       inputSchema: z.object({
         path: z.string().optional().describe('Repository path (default: current directory)'),
         cached: z.boolean().optional().describe('Show staged changes'),

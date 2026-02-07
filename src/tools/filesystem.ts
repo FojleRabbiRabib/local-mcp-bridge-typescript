@@ -14,12 +14,15 @@ export function registerFileSystemTools(
   server.registerTool(
     'read_file',
     {
-      description: 'Read the contents of a file',
+      description:
+        'Read the contents of a file. Can read entire file or specific line ranges (start/end). MUCH MORE EFFICIENT to read only the lines you need instead of the entire file for large files. ALWAYS use this before editing a file to understand its current state.',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to read'),
+        startLine: z.number().optional().describe('Start line number (1-indexed, optional)'),
+        endLine: z.number().optional().describe('End line number (inclusive, 1-indexed, optional)'),
       }),
     },
-    async ({ path: filePath }) => {
+    async ({ path: filePath, startLine, endLine }) => {
       const validation = validator.validate(filePath);
       if (!validation.valid) {
         return {
@@ -51,6 +54,48 @@ export function registerFileSystemTools(
         }
 
         const content = await fs.readFile(filePath, 'utf-8');
+
+        // If start/end lines specified, return only those lines
+        if (startLine !== undefined || endLine !== undefined) {
+          const lines = content.split('\n');
+          const start = startLine !== undefined ? Math.max(1, startLine) : 1;
+          const end = endLine !== undefined ? Math.min(lines.length, endLine) : lines.length;
+
+          if (start > lines.length) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error: startLine ${start} is out of range (file has ${lines.length} lines)`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (end < start) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error: endLine ${end} is less than startLine ${start}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const selectedLines = lines.slice(start - 1, end);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: selectedLines.join('\n'),
+              },
+            ],
+          };
+        }
+
         return {
           content: [{ type: 'text', text: content }],
         };
@@ -67,7 +112,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'write_file',
     {
-      description: 'Write content to a file (creates or overwrites)',
+      description:
+        "Create a new file or completely replace an existing file's content. IMPORTANT: Only use this for NEW files or when you need to REPLACE the entire content. For modifying existing files, use edit_file instead to save resources and reduce costs.",
       inputSchema: z.object({
         path: z.string().describe('Path to the file to write'),
         content: z.string().describe('Content to write to the file'),
@@ -104,7 +150,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'list_directory',
     {
-      description: 'List the contents of a directory',
+      description:
+        "List all files and subdirectories in a directory. USE THIS to see what's in a folder before navigating or operating on its contents.",
       inputSchema: z.object({
         path: z.string().describe('Path to the directory to list'),
       }),
@@ -152,7 +199,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'edit_file',
     {
-      description: 'Edit a file by replacing text (search and replace)',
+      description:
+        "Modify an existing file by searching for and replacing specific text. PREFERRED over write_file for making changes to existing files. This is more efficient and cost-effective as it only changes what's needed. Use this when you need to update, add to, or modify parts of an existing file.",
       inputSchema: z.object({
         path: z.string().describe('Path to the file to edit'),
         oldText: z.string().describe('Text to find and replace'),
@@ -211,7 +259,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'replace_lines',
     {
-      description: 'Replace specific lines in a file by line numbers',
+      description:
+        'Replace a specific range of lines in a file by line numbers. IDEAL for precise edits when you know the exact line numbers. This is more efficient than write_file as it only changes the specified lines. Use this for targeted modifications.',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to edit'),
         startLine: z.number().describe('Start line number (1-indexed)'),
@@ -305,7 +354,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'insert_lines',
     {
-      description: 'Insert new lines at a specific position in a file',
+      description:
+        'Insert new content at a specific line position in a file. EFFICIENT way to add content without rewriting the entire file. Use this to add imports, functions, or any new content at a specific location.',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to edit'),
         afterLine: z
@@ -385,7 +435,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'delete_lines',
     {
-      description: 'Delete specific lines from a file',
+      description:
+        'Remove a specific range of lines from a file. EFFICIENT way to delete content without rewriting the entire file. Use this to remove unused code, comments, or any content by line numbers.',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to edit'),
         startLine: z.number().describe('Start line number (1-indexed)'),
@@ -477,7 +528,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'create_directory',
     {
-      description: 'Create a new directory (creates parent directories if needed)',
+      description:
+        'Create a new directory. Automatically creates parent directories if needed. USE THIS to organize project structure.',
       inputSchema: z.object({
         path: z.string().describe('Path to the directory to create'),
       }),
@@ -509,7 +561,7 @@ export function registerFileSystemTools(
   server.registerTool(
     'delete_file',
     {
-      description: 'Delete a file',
+      description: 'Permanently delete a file. USE WITH CAUTION - this cannot be undone.',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to delete'),
       }),
@@ -541,7 +593,8 @@ export function registerFileSystemTools(
   server.registerTool(
     'search_files',
     {
-      description: 'Search for text in files using grep',
+      description:
+        'Search for text patterns across files using grep. MUCH FASTER than manually reading files. USE THIS to find where code or text is located.',
       inputSchema: z.object({
         pattern: z.string().describe('Text pattern to search for'),
         path: z.string().optional().describe('Directory to search in (default: current directory)'),

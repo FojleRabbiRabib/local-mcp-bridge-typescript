@@ -14,7 +14,8 @@ export function registerCommandTools(
   server.registerTool(
     'execute_command',
     {
-      description: 'Execute a shell command with optional arguments',
+      description:
+        'Execute a shell command with arguments. Command must be in the allowed list. USE THIS as a last resort when no specific tool is available for the task.',
       inputSchema: z.object({
         command: z.string().describe('Command to execute (must be in allowed list)'),
         args: z.array(z.string()).optional().describe('Command arguments'),

@@ -14,7 +14,8 @@ export function registerMLTools(
   server.registerTool(
     'jupyter_run',
     {
-      description: 'Execute a Jupyter notebook',
+      description:
+        'Execute a Jupyter notebook and save the output. USE THIS to run notebooks non-interactively for testing or automation.',
       inputSchema: z.object({
         path: z.string().describe('Path to .ipynb file'),
         output: z.string().optional().describe('Output notebook path'),
@@ -42,7 +43,8 @@ export function registerMLTools(
   server.registerTool(
     'python_venv_create',
     {
-      description: 'Create a Python virtual environment',
+      description:
+        'Create an isolated Python virtual environment. ALWAYS use this before installing Python packages to avoid polluting the system Python.',
       inputSchema: z.object({
         path: z.string().describe('Project path'),
         name: z.string().optional().describe('Virtual environment name (default: venv)'),
@@ -65,7 +67,8 @@ export function registerMLTools(
   server.registerTool(
     'conda_env_create',
     {
-      description: 'Create a Conda environment',
+      description:
+        'Create a new Conda environment with specific Python version and packages. USE THIS for managing Python environments when Conda is available.',
       inputSchema: z.object({
         name: z.string().describe('Environment name'),
         python: z.string().optional().describe('Python version (e.g., "3.10")'),
@@ -89,7 +92,8 @@ export function registerMLTools(
   server.registerTool(
     'conda_env_list',
     {
-      description: 'List all Conda environments',
+      description:
+        'List all available Conda environments. USE THIS to see what environments exist before activating or creating one.',
       inputSchema: z.object({}),
     },
     async () => {

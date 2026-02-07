@@ -1,28 +1,64 @@
 import winston from 'winston';
 import path from 'path';
+import { env } from '../config/environment.js';
 
-const logLevel = process.env.LOG_LEVEL || 'info';
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = env.NODE_ENV !== 'production';
+
+// Define custom log levels
+const customLevels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+};
+
+// Define colors for each level
+const colors = {
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  debug: 'blue',
+};
+
+// Add colors to winston
+winston.addColors(colors);
 
 export const logger = winston.createLogger({
-  level: logLevel,
+  levels: customLevels,
+  level: env.LOG_LEVEL,
   format: winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.json({
+      space: 2,
+      replacer: (key, value) => {
+        if (value instanceof Error) {
+          return {
+            message: value.message,
+            stack: value.stack,
+            name: value.name,
+          };
+        }
+        return value;
+      },
+    })
   ),
-  defaultMeta: { service: 'mcp-bridge' },
+  defaultMeta: {
+    service: 'mcp-bridge',
+    environment: env.NODE_ENV,
+    version: '1.0.0',
+  },
   transports: [
     new winston.transports.File({
       filename: path.join(process.cwd(), 'logs', 'error.log'),
       level: 'error',
-      maxsize: 10485760, // 10MB
-      maxFiles: 5,
+      maxsize: env.LOG_FILE_MAX_SIZE,
+      maxFiles: env.LOG_FILE_MAX_FILES,
     }),
     new winston.transports.File({
       filename: path.join(process.cwd(), 'logs', 'combined.log'),
-      maxsize: 10485760,
-      maxFiles: 10,
+      maxsize: env.LOG_FILE_MAX_SIZE,
+      maxFiles: env.LOG_FILE_MAX_FILES,
     }),
   ],
 });
@@ -38,6 +74,13 @@ if (isDevelopment) {
           return `${timestamp} [${level}]: ${message} ${metaStr}`;
         })
       ),
+    })
+  );
+} else {
+  // In production, add console transport with JSON format
+  logger.add(
+    new winston.transports.Console({
+      format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
     })
   );
 }
@@ -62,6 +105,7 @@ export const logContext = {
           message: error.message,
           stack: error.stack,
           name: error.name,
+          cause: error.cause,
         },
         ...context,
       };
@@ -70,5 +114,42 @@ export const logContext = {
       error: String(error),
       ...context,
     };
+  },
+
+  request: (requestId: string, method: string, path: string, statusCode?: number) => ({
+    requestId,
+    method,
+    path,
+    statusCode,
+  }),
+
+  metric: (name: string, value: number, tags: Record<string, string> = {}) => ({
+    metric: name,
+    value,
+    tags,
+    timestamp: new Date().toISOString(),
+  }),
+};
+
+// Logging utility functions
+export const logWithContext = {
+  info: (message: string, context: Record<string, unknown> = {}) => {
+    logger.info(message, context);
+  },
+
+  error: (message: string, error?: Error, context: Record<string, unknown> = {}) => {
+    if (error) {
+      logger.error(message, logContext.error(error, context));
+    } else {
+      logger.error(message, context);
+    }
+  },
+
+  warn: (message: string, context: Record<string, unknown> = {}) => {
+    logger.warn(message, context);
+  },
+
+  debug: (message: string, context: Record<string, unknown> = {}) => {
+    logger.debug(message, context);
   },
 };
