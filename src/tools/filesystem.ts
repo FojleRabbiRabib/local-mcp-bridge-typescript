@@ -308,7 +308,9 @@ export function registerFileSystemTools(
       description: 'Insert new lines at a specific position in a file',
       inputSchema: z.object({
         path: z.string().describe('Path to the file to edit'),
-        afterLine: z.number().describe('Line number after which to insert (0 = beginning, 1-indexed)'),
+        afterLine: z
+          .number()
+          .describe('Line number after which to insert (0 = beginning, 1-indexed)'),
         content: z.string().describe('Content to insert'),
       }),
     },

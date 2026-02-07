@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "server": {
+    "name": "MCP Agent",
+    "port": 3000,
+    "host": "localhost"
+  },
+  "permissions": {
+    "allowedPaths": [
+      "/home/rabib/Public/mcp-bridge-ts",
+      "/tmp"
+    ],
+    "deniedPaths": [
+      "/etc",
+      "/sys",
+      "/proc",
+      "/dev",
+      "/root",
+      "~/.ssh",
+      "~/.aws",
+      "~/.config"
+    ],
+    "allowedCommands": [
+      "ls",
+      "grep",
+      "find",
+      "cat",
+      "head",
+      "tail",
+      "git",
+      "npm",
+      "pnpm",
+      "php",
+      "npx"
+    ],
+    "enableCommandExecution": true
+  },
+  "limits": {
+    "maxFileSize": 10485760,
+    "commandTimeout": 30000
+  }
+}

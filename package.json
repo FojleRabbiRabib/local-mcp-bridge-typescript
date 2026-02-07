@@ -22,6 +22,8 @@
     "@modelcontextprotocol/sdk": "^1.24.3",
     "cors": "^2.8.5",
     "express": "^5.2.1",
+    "prom-client": "^15.1.3",
+    "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
