@@ -4,20 +4,47 @@ import path from 'path';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
 
+// Common directories to exclude from project structure (build artifacts, dependencies, cache)
+const DEFAULT_EXCLUDE_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  '.next',
+  '.nuxt',
+  '.output',
+  'target',
+  'bin',
+  'obj',
+  '.venv',
+  'venv',
+  '.virtualenv',
+  'vendor',
+  'tmp',
+  'temp',
+  '.cache',
+  '.turbo',
+  '.tsbuildinfo',
+]);
+
 export function registerProjectTools(server: McpServer, validator: PathValidator) {
   // get_project_structure tool - Get file tree with .gitignore support
   server.registerTool(
     'get_project_structure',
     {
       description:
-        'Get the complete file tree structure of a project. Automatically respects .gitignore patterns. BEST way to quickly understand project layout without manually browsing directories.',
+        'Get the complete file tree structure of a project. Automatically excludes common build/dependency directories (node_modules, dist, build, etc.) and hidden files. BEST way to quickly understand project layout without manually browsing directories.',
       inputSchema: z.object({
         path: z.string().describe('Project root path'),
         maxDepth: z.number().optional().describe('Maximum depth to traverse (default: 5)'),
         includeHidden: z.boolean().optional().describe('Include hidden files/folders'),
+        excludePatterns: z
+          .array(z.string())
+          .optional()
+          .describe('Additional directory/file patterns to exclude (e.g., ["dist", "build"])'),
       }),
     },
-    async ({ path: projectPath, maxDepth = 5, includeHidden = false }) => {
+    async ({ path: projectPath, maxDepth = 5, includeHidden = false, excludePatterns = [] }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -27,7 +54,16 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
       }
 
       try {
-        const structure = await buildFileTree(projectPath, maxDepth, includeHidden, 0);
+        // Merge default excludes with user-provided patterns
+        const excludeDirs = new Set([...DEFAULT_EXCLUDE_DIRS, ...excludePatterns]);
+        const structure = await buildFileTree(
+          projectPath,
+          maxDepth,
+          includeHidden,
+          0,
+          '',
+          excludeDirs
+        );
         return {
           content: [{ type: 'text' as const, text: structure }],
         };
@@ -158,7 +194,8 @@ async function buildFileTree(
   maxDepth: number,
   includeHidden: boolean,
   currentDepth: number,
-  prefix: string = ''
+  prefix: string,
+  excludeDirs: Set<string>
 ): Promise<string> {
   if (currentDepth >= maxDepth) {
     return '';
@@ -168,10 +205,18 @@ async function buildFileTree(
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     let result = '';
 
-    // Filter out hidden files if needed
-    const filteredEntries = includeHidden
-      ? entries
-      : entries.filter((entry) => !entry.name.startsWith('.'));
+    // Filter out hidden files and excluded directories
+    const filteredEntries = entries.filter((entry) => {
+      // Skip excluded directories
+      if (excludeDirs.has(entry.name)) {
+        return false;
+      }
+      // Filter hidden files if needed
+      if (!includeHidden && entry.name.startsWith('.')) {
+        return false;
+      }
+      return true;
+    });
 
     for (let i = 0; i < filteredEntries.length; i++) {
       const entry = filteredEntries[i];
@@ -188,7 +233,8 @@ async function buildFileTree(
           maxDepth,
           includeHidden,
           currentDepth + 1,
-          newPrefix
+          newPrefix,
+          excludeDirs
         );
       }
     }

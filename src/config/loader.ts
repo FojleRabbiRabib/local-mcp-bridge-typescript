@@ -20,10 +20,21 @@ export async function loadConfig(workspace?: string): Promise<AgentConfig> {
 
   // Load workspace-specific config if workspace is provided
   if (workspace) {
-    const workspaceConfigPath = path.join(workspace, '.mcp-agent.json');
+    const resolvedWorkspace = path.resolve(workspace);
+    const workspaceConfigPath = path.join(resolvedWorkspace, '.mcp-agent.json');
     const workspaceConfig = await loadConfigFile(workspaceConfigPath);
     if (workspaceConfig) {
       config = mergeConfig(config, workspaceConfig);
+    }
+
+    // Ensure workspace is always in allowedPaths
+    // Normalize existing allowed paths for comparison
+    const normalizedAllowedPaths = config.allowedPaths.map((p) =>
+      p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : path.resolve(p)
+    );
+
+    if (!normalizedAllowedPaths.includes(resolvedWorkspace)) {
+      config.allowedPaths.push(resolvedWorkspace);
     }
   }
 

@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import fs from 'fs/promises';
+import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -217,10 +219,49 @@ app.post(
 app.get('/agent', validateQuery(schemas.agentQuery), async (req: Request, res: Response) => {
   const workspace = req.query.workspace as string;
 
+  // Validate workspace path exists and is a directory
+  let resolvedPath: string;
   try {
-    logger.info('Starting agent session', { workspace, requestId: req.id });
+    resolvedPath = path.resolve(workspace);
+    const stats = await fs.stat(resolvedPath);
+    if (!stats.isDirectory()) {
+      logger.warn('Workspace path is not a directory', {
+        workspace: resolvedPath,
+        requestId: req.id,
+      });
+      return res
+        .status(400)
+        .json({ error: 'Workspace path is not a directory', requestId: req.id });
+    }
+  } catch {
+    logger.warn('Workspace path does not exist', { workspace, requestId: req.id });
+    return res.status(400).json({ error: 'Workspace path does not exist', requestId: req.id });
+  }
 
-    const agentConfig = await loadConfig(workspace);
+  // Load config early to validate against deniedPaths
+  const agentConfig = await loadConfig(workspace);
+
+  // Validate workspace is not in deniedPaths
+  const isDenied = agentConfig.deniedPaths.some((deniedPath) => {
+    const normalizedDenied = path.resolve(deniedPath);
+    return (
+      resolvedPath === normalizedDenied ||
+      resolvedPath.startsWith(normalizedDenied + path.sep) ||
+      normalizedDenied.startsWith(resolvedPath + path.sep)
+    );
+  });
+
+  if (isDenied) {
+    logger.warn('Workspace path is denied', { workspace: resolvedPath, requestId: req.id });
+    return res.status(403).json({
+      error: 'Workspace path is not allowed due to security restrictions',
+      requestId: req.id,
+    });
+  }
+
+  try {
+    logger.info('Starting agent session', { workspace: resolvedPath, requestId: req.id });
+
     const server = createAgentServer(agentConfig);
     const sseTransport = new SSEServerTransport('/agent', res);
 
@@ -234,7 +275,7 @@ app.get('/agent', validateQuery(schemas.agentQuery), async (req: Request, res: R
 
     logger.info(
       'Agent session created',
-      logContext.session(session.sessionId, { workspace, requestId: req.id })
+      logContext.session(session.sessionId, { workspace: resolvedPath, requestId: req.id })
     );
 
     sseTransport.onclose = () => {
