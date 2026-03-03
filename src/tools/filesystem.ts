@@ -4,12 +4,17 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
+import { loadIgnoreFiles } from '../utils/ignore.js';
 
 export function registerFileSystemTools(
   server: McpServer,
   validator: PathValidator,
-  maxFileSize: number
+  maxFileSize: number,
+  workspace: string,
+  commandTimeout: number
 ) {
+  // Workspace is now required
+  const defaultPath = workspace;
   // read_file tool - Read contents of a file
   server.registerTool(
     'read_file',
@@ -31,8 +36,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
 
         if (!stats.isFile()) {
           return {
@@ -53,7 +60,7 @@ export function registerFileSystemTools(
           };
         }
 
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fs.readFile(absolutePath, 'utf-8');
 
         // If start/end lines specified, return only those lines
         if (startLine !== undefined || endLine !== undefined) {
@@ -128,12 +135,14 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
         // Ensure parent directory exists
-        const dir = path.dirname(filePath);
+        const dir = path.dirname(absolutePath);
         await fs.mkdir(dir, { recursive: true });
 
-        await fs.writeFile(filePath, content, 'utf-8');
+        await fs.writeFile(absolutePath, content, 'utf-8');
         return {
           content: [{ type: 'text', text: `Successfully wrote to ${filePath}` }],
         };
@@ -151,12 +160,15 @@ export function registerFileSystemTools(
     'list_directory',
     {
       description:
-        "List all files and subdirectories in a directory. USE THIS to see what's in a folder before navigating or operating on its contents.",
+        "List all files and subdirectories in a directory. Automatically respects .gitignore. USE THIS to see what's in a folder before navigating or operating on its contents.",
       inputSchema: z.object({
-        path: z.string().describe('Path to the directory to list'),
+        path: z
+          .string()
+          .optional()
+          .describe('Path to the directory to list (default: workspace root)'),
       }),
     },
-    async ({ path: dirPath }) => {
+    async ({ path: dirPath = defaultPath }) => {
       const validation = validator.validate(dirPath);
       if (!validation.valid) {
         return {
@@ -165,8 +177,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(dirPath);
+        const stats = await fs.stat(absolutePath);
 
         if (!stats.isDirectory()) {
           return {
@@ -175,8 +189,15 @@ export function registerFileSystemTools(
           };
         }
 
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        const projectRoot = workspace ? path.resolve(workspace) : absolutePath;
+        const ignoreResult = await loadIgnoreFiles(projectRoot);
+
+        const entries = await fs.readdir(absolutePath, { withFileTypes: true });
         const formatted = entries
+          .filter((entry) => {
+            const fullPath = path.join(absolutePath, entry.name);
+            return !ignoreResult.isIgnored(fullPath);
+          })
           .map((entry) => {
             const type = entry.isDirectory() ? '[DIR] ' : '[FILE]';
             return `${type} ${entry.name}`;
@@ -216,8 +237,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
 
         if (stats.size > maxFileSize) {
           return {
@@ -231,7 +254,7 @@ export function registerFileSystemTools(
           };
         }
 
-        let content = await fs.readFile(filePath, 'utf-8');
+        let content = await fs.readFile(absolutePath, 'utf-8');
 
         if (!content.includes(oldText)) {
           return {
@@ -241,7 +264,7 @@ export function registerFileSystemTools(
         }
 
         content = content.replace(oldText, newText);
-        await fs.writeFile(filePath, content, 'utf-8');
+        await fs.writeFile(absolutePath, content, 'utf-8');
 
         return {
           content: [{ type: 'text', text: `Successfully edited ${filePath}` }],
@@ -277,8 +300,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
 
         if (stats.size > maxFileSize) {
           return {
@@ -292,7 +317,7 @@ export function registerFileSystemTools(
           };
         }
 
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fs.readFile(absolutePath, 'utf-8');
         const lines = content.split('\n');
 
         // Validate line numbers
@@ -331,7 +356,7 @@ export function registerFileSystemTools(
         const updatedLines = [...before, ...newLines, ...after];
         const updatedContent = updatedLines.join('\n');
 
-        await fs.writeFile(filePath, updatedContent, 'utf-8');
+        await fs.writeFile(absolutePath, updatedContent, 'utf-8');
 
         return {
           content: [
@@ -373,8 +398,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
 
         if (stats.size > maxFileSize) {
           return {
@@ -388,7 +415,7 @@ export function registerFileSystemTools(
           };
         }
 
-        const fileContent = await fs.readFile(filePath, 'utf-8');
+        const fileContent = await fs.readFile(absolutePath, 'utf-8');
         const lines = fileContent.split('\n');
 
         // Validate line number
@@ -412,7 +439,7 @@ export function registerFileSystemTools(
         const updatedLines = [...before, ...newLines, ...after];
         const updatedContent = updatedLines.join('\n');
 
-        await fs.writeFile(filePath, updatedContent, 'utf-8');
+        await fs.writeFile(absolutePath, updatedContent, 'utf-8');
 
         return {
           content: [
@@ -452,8 +479,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
 
         if (stats.size > maxFileSize) {
           return {
@@ -467,7 +496,7 @@ export function registerFileSystemTools(
           };
         }
 
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fs.readFile(absolutePath, 'utf-8');
         const lines = content.split('\n');
 
         // Validate line numbers
@@ -505,7 +534,7 @@ export function registerFileSystemTools(
         const updatedLines = [...before, ...after];
         const updatedContent = updatedLines.join('\n');
 
-        await fs.writeFile(filePath, updatedContent, 'utf-8');
+        await fs.writeFile(absolutePath, updatedContent, 'utf-8');
 
         return {
           content: [
@@ -543,8 +572,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        await fs.mkdir(dirPath, { recursive: true });
+        await fs.mkdir(absolutePath, { recursive: true });
         return {
           content: [{ type: 'text', text: `Successfully created directory ${dirPath}` }],
         };
@@ -575,8 +606,10 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        await fs.unlink(filePath);
+        await fs.unlink(absolutePath);
         return {
           content: [{ type: 'text', text: `Successfully deleted ${filePath}` }],
         };
@@ -594,14 +627,14 @@ export function registerFileSystemTools(
     'search_files',
     {
       description:
-        'Search for text patterns across files using grep. MUCH FASTER than manually reading files. USE THIS to find where code or text is located.',
+        'Search for text patterns across files using grep. MUCH FASTER than manually reading files. Automatically respects .gitignore. USE THIS to find where code or text is located.',
       inputSchema: z.object({
         pattern: z.string().describe('Text pattern to search for'),
-        path: z.string().optional().describe('Directory to search in (default: current directory)'),
+        path: z.string().optional().describe('Directory to search in (default: workspace root)'),
         filePattern: z.string().optional().describe('File pattern to match (e.g., "*.ts")'),
       }),
     },
-    async ({ pattern, path: searchPath = '.', filePattern: _filePattern }) => {
+    async ({ pattern, path: searchPath = defaultPath, filePattern: _filePattern }) => {
       const validation = validator.validate(searchPath);
       if (!validation.valid) {
         return {
@@ -610,9 +643,31 @@ export function registerFileSystemTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const proc = spawn('grep', ['-r', '-n', '-i', pattern, searchPath], {
-          timeout: 10000,
+        // Grep doesn't natively respect .gitignore without a plugin or using ripgrep.
+        // We will use a more sophisticated approach if ripgrep (rg) is available,
+        // or fall back to standard grep with exclusions if not.
+
+        const projectRoot = path.resolve(workspace);
+        const ignoreResult = await loadIgnoreFiles(projectRoot);
+
+        // For simplicity and compatibility, we'll use a recursive grep but manually filter if needed,
+        // or better, use git grep if it's a git repo.
+        // However, a robust approach is to use 'grep' with '--exclude-dir' for common patterns.
+
+        const excludeDirs = ['.git', 'node_modules', 'dist', 'build', 'out'];
+        const grepArgs = ['-r', '-n', '-i'];
+
+        for (const dir of excludeDirs) {
+          grepArgs.push('--exclude-dir', dir);
+        }
+
+        grepArgs.push(pattern, absolutePath);
+
+        const proc = spawn('grep', grepArgs, {
+          timeout: commandTimeout,
         });
 
         let stdout = '';
@@ -627,10 +682,26 @@ export function registerFileSystemTools(
         });
 
         return new Promise((resolve) => {
+          let resolved = false;
+
           proc.on('close', (code) => {
+            if (resolved) return;
+            resolved = true;
+
             if (code === 0) {
+              // Further filter results by .gitignore
+              const lines = stdout.split('\n');
+              const filteredLines = lines.filter((line) => {
+                if (!line) return false;
+                const filePathMatch = line.match(/^([^:]+):/);
+                if (filePathMatch) {
+                  return !ignoreResult.isIgnored(filePathMatch[1]);
+                }
+                return true;
+              });
+
               resolve({
-                content: [{ type: 'text', text: stdout || 'No matches found' }],
+                content: [{ type: 'text', text: filteredLines.join('\n') || 'No matches found' }],
               });
             } else if (code === 1) {
               // grep returns 1 when no matches found
@@ -639,15 +710,27 @@ export function registerFileSystemTools(
               });
             } else {
               resolve({
-                content: [{ type: 'text', text: `Error: ${stderr}` }],
+                content: [{ type: 'text', text: `Error: ${stderr || 'grep command failed'}` }],
                 isError: true,
               });
             }
           });
 
           proc.on('error', (error) => {
+            if (resolved) return;
+            resolved = true;
             resolve({
               content: [{ type: 'text', text: `Error: ${error.message}` }],
+              isError: true,
+            });
+          });
+
+          proc.on('timeout', () => {
+            if (resolved) return;
+            resolved = true;
+            proc.kill();
+            resolve({
+              content: [{ type: 'text', text: `Search timed out after ${commandTimeout}ms` }],
               isError: true,
             });
           });

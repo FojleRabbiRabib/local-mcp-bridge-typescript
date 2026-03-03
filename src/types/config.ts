@@ -1,3 +1,9 @@
+export interface ServerConfig {
+  name: string;
+  port: number;
+  host: string;
+}
+
 export interface AgentConfig {
   allowedPaths: string[];
   deniedPaths: string[];
@@ -5,12 +11,7 @@ export interface AgentConfig {
   maxFileSize: number;
   enableCommandExecution: boolean;
   commandTimeout: number;
-}
-
-export interface ServerConfig {
-  name: string;
-  port: number;
-  host: string;
+  workspace: string;
 }
 
 export interface ConfigFile {

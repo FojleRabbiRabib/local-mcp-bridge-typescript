@@ -6,8 +6,11 @@ import * as z from 'zod';
 export function registerGitTools(
   server: McpServer,
   validator: PathValidator,
-  commandTimeout: number
+  commandTimeout: number,
+  workspace: string
 ) {
+  // Workspace is now required
+  const defaultRepoPath = workspace;
   // git_status tool - Show working tree status
   server.registerTool(
     'git_status',
@@ -15,10 +18,10 @@ export function registerGitTools(
       description:
         'Show the working tree status including modified, staged, and untracked files. ALWAYS run this before making commits to see what has changed.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
       }),
     },
-    async ({ path: repoPath = '.' }) => {
+    async ({ path: repoPath = defaultRepoPath }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -27,7 +30,7 @@ export function registerGitTools(
         };
       }
 
-      return executeGitCommand(['status'], repoPath, commandTimeout);
+      return executeGitCommand(['status'], validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -38,12 +41,12 @@ export function registerGitTools(
       description:
         'Show commit history with optional limit and oneline format. USE THIS to understand recent changes, project history, or to find specific commits.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         limit: z.number().optional().describe('Number of commits to show (default: 10)'),
         oneline: z.boolean().optional().describe('Show one line per commit'),
       }),
     },
-    async ({ path: repoPath = '.', limit = 10, oneline = false }) => {
+    async ({ path: repoPath = defaultRepoPath, limit = 10, oneline = false }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -57,7 +60,7 @@ export function registerGitTools(
         args.push('--oneline');
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -68,12 +71,12 @@ export function registerGitTools(
       description:
         'Show line-by-line changes between commits, between commit and working tree, or for a specific file. ESSENTIAL for reviewing what changed before committing or merging.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         cached: z.boolean().optional().describe('Show staged changes'),
         file: z.string().optional().describe('Show diff for specific file'),
       }),
     },
-    async ({ path: repoPath = '.', cached = false, file }) => {
+    async ({ path: repoPath = defaultRepoPath, cached = false, file }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -90,7 +93,7 @@ export function registerGitTools(
         args.push(file);
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -100,11 +103,11 @@ export function registerGitTools(
     {
       description: 'Show various types of objects (git show)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         commit: z.string().optional().describe('Commit hash or reference (default: HEAD)'),
       }),
     },
-    async ({ path: repoPath = '.', commit = 'HEAD' }) => {
+    async ({ path: repoPath = defaultRepoPath, commit = 'HEAD' }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -113,7 +116,7 @@ export function registerGitTools(
         };
       }
 
-      return executeGitCommand(['show', commit], repoPath, commandTimeout);
+      return executeGitCommand(['show', commit], validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -123,11 +126,11 @@ export function registerGitTools(
     {
       description: 'List branches (git branch)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         all: z.boolean().optional().describe('List all branches including remote'),
       }),
     },
-    async ({ path: repoPath = '.', all = false }) => {
+    async ({ path: repoPath = defaultRepoPath, all = false }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -141,7 +144,7 @@ export function registerGitTools(
         args.push('-a');
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -151,11 +154,11 @@ export function registerGitTools(
     {
       description: 'Add file contents to the staging area (git add)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         files: z.array(z.string()).describe('Files to add'),
       }),
     },
-    async ({ path: repoPath = '.', files }) => {
+    async ({ path: repoPath = defaultRepoPath, files }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -171,7 +174,7 @@ export function registerGitTools(
         };
       }
 
-      return executeGitCommand(['add', ...files], repoPath, commandTimeout);
+      return executeGitCommand(['add', ...files], validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -181,12 +184,12 @@ export function registerGitTools(
     {
       description: 'Record changes to the repository (git commit)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         message: z.string().describe('Commit message'),
         amend: z.boolean().optional().describe('Amend the previous commit'),
       }),
     },
-    async ({ path: repoPath = '.', message, amend = false }) => {
+    async ({ path: repoPath = defaultRepoPath, message, amend = false }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -207,7 +210,7 @@ export function registerGitTools(
         args.push('--amend');
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -217,12 +220,12 @@ export function registerGitTools(
     {
       description: 'Switch branches or restore working tree files (git checkout)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         branch: z.string().describe('Branch name to checkout'),
         create: z.boolean().optional().describe('Create new branch'),
       }),
     },
-    async ({ path: repoPath = '.', branch, create = false }) => {
+    async ({ path: repoPath = defaultRepoPath, branch, create = false }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -244,7 +247,7 @@ export function registerGitTools(
       }
       args.push(branch);
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -254,12 +257,12 @@ export function registerGitTools(
     {
       description: 'Fetch from and integrate with another repository (git pull)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         remote: z.string().optional().describe('Remote name (default: origin)'),
         branch: z.string().optional().describe('Branch name'),
       }),
     },
-    async ({ path: repoPath = '.', remote = 'origin', branch }) => {
+    async ({ path: repoPath = defaultRepoPath, remote = 'origin', branch }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -273,7 +276,7 @@ export function registerGitTools(
         args.push(branch);
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -283,13 +286,13 @@ export function registerGitTools(
     {
       description: 'Update remote refs along with associated objects (git push)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Repository path (default: current directory)'),
+        path: z.string().optional().describe('Repository path (default: workspace root)'),
         remote: z.string().optional().describe('Remote name (default: origin)'),
         branch: z.string().optional().describe('Branch name'),
         force: z.boolean().optional().describe('Force push'),
       }),
     },
-    async ({ path: repoPath = '.', remote = 'origin', branch, force = false }) => {
+    async ({ path: repoPath = defaultRepoPath, remote = 'origin', branch, force = false }) => {
       const validation = validator.validate(repoPath);
       if (!validation.valid) {
         return {
@@ -306,7 +309,7 @@ export function registerGitTools(
         args.push('--force');
       }
 
-      return executeGitCommand(args, repoPath, commandTimeout);
+      return executeGitCommand(args, validation.resolvedPath!, commandTimeout);
     }
   );
 }
@@ -318,6 +321,7 @@ function executeGitCommand(
   timeout: number
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   return new Promise((resolve) => {
+    let resolved = false;
     const proc = spawn('git', args, {
       cwd,
       timeout,
@@ -335,6 +339,9 @@ function executeGitCommand(
     });
 
     proc.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+
       if (code === 0) {
         resolve({
           content: [{ type: 'text' as const, text: stdout || '(no output)' }],
@@ -350,8 +357,20 @@ function executeGitCommand(
     });
 
     proc.on('error', (error) => {
+      if (resolved) return;
+      resolved = true;
       resolve({
         content: [{ type: 'text' as const, text: `Error executing git: ${error.message}` }],
+        isError: true,
+      });
+    });
+
+    proc.on('timeout', () => {
+      if (resolved) return;
+      resolved = true;
+      proc.kill();
+      resolve({
+        content: [{ type: 'text' as const, text: `Git command timed out after ${timeout}ms` }],
         isError: true,
       });
     });

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { ConnectionPool, connectionPool } from '../utils/connection-pool.js';
 
 describe('ConnectionPool', () => {

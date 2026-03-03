@@ -1,20 +1,20 @@
 import path from 'path';
 
-export interface ValidationResult {
-  valid: boolean;
-  error?: string;
-}
+import { ValidationResult } from '../types/security.js';
 
 export class PathValidator {
   constructor(
     private allowedPaths: string[],
-    private deniedPaths: string[]
+    private deniedPaths: string[],
+    private workspace: string
   ) {}
 
-  validate(requestedPath: string): ValidationResult {
+  validate(requestedPath: string): ValidationResult & { resolvedPath?: string } {
     try {
-      // Resolve to absolute path to prevent path traversal
-      const resolved = path.resolve(requestedPath);
+      // If path is relative, resolve it against the workspace
+      const resolved = path.isAbsolute(requestedPath)
+        ? path.resolve(requestedPath)
+        : path.resolve(this.workspace, requestedPath);
 
       // Check denied paths first (highest priority)
       for (const denied of this.deniedPaths) {
@@ -44,7 +44,7 @@ export class PathValidator {
         };
       }
 
-      return { valid: true };
+      return { valid: true, resolvedPath: resolved };
     } catch (error) {
       return {
         valid: false,

@@ -1,8 +1,8 @@
-import { AgentConfig } from './types.js';
+import { AgentConfig } from '../types/config.js';
 import path from 'path';
 import os from 'os';
 
-export const DEFAULT_CONFIG: AgentConfig = {
+export const DEFAULT_CONFIG: Omit<AgentConfig, 'workspace'> = {
   allowedPaths: [process.cwd()],
   deniedPaths: [
     '/etc',
@@ -26,6 +26,8 @@ export const DEFAULT_CONFIG: AgentConfig = {
     'node',
     'python',
     'python3',
+    'gradlew',
+    './gradlew',
   ],
   maxFileSize: 10 * 1024 * 1024, // 10MB
   enableCommandExecution: true,

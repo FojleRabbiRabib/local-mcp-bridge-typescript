@@ -3,10 +3,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
+import { loadIgnoreFiles, IgnoreResult } from '../utils/ignore.js';
 
 // Common directories to exclude from project structure (build artifacts, dependencies, cache)
 const DEFAULT_EXCLUDE_DIRS = new Set([
   'node_modules',
+  '.git',
   'dist',
   'build',
   'out',
@@ -27,15 +29,22 @@ const DEFAULT_EXCLUDE_DIRS = new Set([
   '.tsbuildinfo',
 ]);
 
-export function registerProjectTools(server: McpServer, validator: PathValidator) {
+export function registerProjectTools(
+  server: McpServer,
+  validator: PathValidator,
+  workspace: string
+) {
+  // Workspace is now required
+  const defaultPath = workspace;
+
   // get_project_structure tool - Get file tree with .gitignore support
   server.registerTool(
     'get_project_structure',
     {
       description:
-        'Get the complete file tree structure of a project. Automatically excludes common build/dependency directories (node_modules, dist, build, etc.) and hidden files. BEST way to quickly understand project layout without manually browsing directories.',
+        'Get the complete file tree structure of a project. Automatically excludes common build/dependency directories (node_modules, dist, build, etc.), hidden files, and respected .gitignore patterns. BEST way to quickly understand project layout without manually browsing directories.',
       inputSchema: z.object({
-        path: z.string().describe('Project root path'),
+        path: z.string().optional().describe('Project root path (default: workspace root)'),
         maxDepth: z.number().optional().describe('Maximum depth to traverse (default: 5)'),
         includeHidden: z.boolean().optional().describe('Include hidden files/folders'),
         excludePatterns: z
@@ -44,7 +53,12 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
           .describe('Additional directory/file patterns to exclude (e.g., ["dist", "build"])'),
       }),
     },
-    async ({ path: projectPath, maxDepth = 5, includeHidden = false, excludePatterns = [] }) => {
+    async ({
+      path: projectPath = defaultPath,
+      maxDepth = 5,
+      includeHidden = false,
+      excludePatterns = [],
+    }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -53,16 +67,22 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
+        // Load .gitignore for the project root
+        const ignoreResult = await loadIgnoreFiles(absolutePath);
+
         // Merge default excludes with user-provided patterns
         const excludeDirs = new Set([...DEFAULT_EXCLUDE_DIRS, ...excludePatterns]);
         const structure = await buildFileTree(
-          projectPath,
+          absolutePath,
           maxDepth,
           includeHidden,
           0,
           '',
-          excludeDirs
+          excludeDirs,
+          ignoreResult
         );
         return {
           content: [{ type: 'text' as const, text: structure }],
@@ -83,10 +103,10 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
       description:
         'Automatically detect project language, framework, and dependencies by analyzing configuration files (package.json, requirements.txt, Cargo.toml, etc.). USE THIS to quickly understand what tech stack a project uses before making changes.',
       inputSchema: z.object({
-        path: z.string().describe('Project root path'),
+        path: z.string().optional().describe('Project root path (default: workspace root)'),
       }),
     },
-    async ({ path: projectPath }) => {
+    async ({ path: projectPath = defaultPath }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -96,7 +116,7 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
       }
 
       try {
-        const analysis = await analyzeProject(projectPath);
+        const analysis = await analyzeProject(validation.resolvedPath!);
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(analysis, null, 2) }],
         };
@@ -114,14 +134,14 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
     'find_files',
     {
       description:
-        'Find files matching a glob pattern (e.g., "*.ts", "**/*.json", "src/**/*.test.ts"). MORE EFFICIENT than manually searching. Use this to locate specific files by pattern when you know the naming convention.',
+        'Find files matching a glob pattern (e.g., "*.ts", "**/*.json", "src/**/*.test.ts"). MORE EFFICIENT than manually searching. Automatically respects .gitignore. Use this to locate specific files by pattern when you know the naming convention.',
       inputSchema: z.object({
-        path: z.string().describe('Directory to search in'),
+        path: z.string().optional().describe('Directory to search in (default: workspace root)'),
         pattern: z.string().describe('File pattern (e.g., "*.ts", "**/*.json")'),
         maxResults: z.number().optional().describe('Maximum number of results (default: 100)'),
       }),
     },
-    async ({ path: searchPath, pattern, maxResults = 100 }) => {
+    async ({ path: searchPath = defaultPath, pattern, maxResults = 100 }) => {
       const validation = validator.validate(searchPath);
       if (!validation.valid) {
         return {
@@ -130,8 +150,11 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const files = await findFiles(searchPath, pattern, maxResults);
+        const ignoreResult = await loadIgnoreFiles(absolutePath);
+        const files = await findFiles(absolutePath, pattern, maxResults, [], ignoreResult);
         const result = files.length > 0 ? files.join('\n') : 'No files found';
         return {
           content: [{ type: 'text' as const, text: result }],
@@ -164,8 +187,10 @@ export function registerProjectTools(server: McpServer, validator: PathValidator
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
+
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(absolutePath);
         const info = {
           path: filePath,
           size: stats.size,
@@ -195,7 +220,8 @@ async function buildFileTree(
   includeHidden: boolean,
   currentDepth: number,
   prefix: string,
-  excludeDirs: Set<string>
+  excludeDirs: Set<string>,
+  ignoreResult: IgnoreResult
 ): Promise<string> {
   if (currentDepth >= maxDepth) {
     return '';
@@ -205,16 +231,25 @@ async function buildFileTree(
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     let result = '';
 
-    // Filter out hidden files and excluded directories
+    // Filter out hidden files, excluded directories, and ignored paths
     const filteredEntries = entries.filter((entry) => {
+      const fullPath = path.join(dirPath, entry.name);
+
+      // Check if ignored by .gitignore
+      if (ignoreResult.isIgnored(fullPath)) {
+        return false;
+      }
+
       // Skip excluded directories
       if (excludeDirs.has(entry.name)) {
         return false;
       }
+
       // Filter hidden files if needed
       if (!includeHidden && entry.name.startsWith('.')) {
         return false;
       }
+
       return true;
     });
 
@@ -234,7 +269,8 @@ async function buildFileTree(
           includeHidden,
           currentDepth + 1,
           newPrefix,
-          excludeDirs
+          excludeDirs,
+          ignoreResult
         );
       }
     }
@@ -332,11 +368,54 @@ async function analyzeProject(projectPath: string): Promise<Record<string, unkno
       analysis.language = 'Rust';
     }
 
-    // Detect Java
-    if (files.includes('pom.xml')) {
+    // Detect Android
+    if (
+      files.includes('gradlew') ||
+      files.includes('gradlew.bat') ||
+      files.includes('build.gradle') ||
+      files.includes('build.gradle.kts')
+    ) {
+      // Check for Android-specific indicators
+      const isAndroid =
+        files.includes('settings.gradle') ||
+        files.includes('settings.gradle.kts') ||
+        files.includes('AndroidManifest.xml');
+
+      if (isAndroid) {
+        analysis.language = 'Kotlin/Java';
+        analysis.framework = 'Android/Gradle';
+        analysis.packageManager = 'gradlew';
+
+        // Check for Kotlin
+        try {
+          const buildGradlePath = path.join(
+            projectPath,
+            files.includes('build.gradle.kts') ? 'build.gradle.kts' : 'build.gradle'
+          );
+          const buildGradle = await fs.readFile(buildGradlePath, 'utf-8');
+          if (buildGradle.includes('kotlin-android')) {
+            analysis.language = 'Kotlin';
+          }
+        } catch {
+          // Build file might not exist at root, check app module
+          try {
+            const appBuildPath = path.join(projectPath, 'app/build.gradle');
+            const appBuild = await fs.readFile(appBuildPath, 'utf-8');
+            if (appBuild.includes('kotlin-android')) {
+              analysis.language = 'Kotlin';
+            }
+          } catch {
+            // Ignore read errors
+          }
+        }
+      }
+    }
+
+    // Detect Java (non-Android)
+    if (files.includes('pom.xml') && analysis.framework !== 'Android/Gradle') {
       analysis.language = 'Java';
       analysis.framework = 'Maven';
-    } else if (files.includes('build.gradle')) {
+    } else if (files.includes('build.gradle') && analysis.framework !== 'Android/Gradle') {
       analysis.language = 'Java/Kotlin';
       analysis.framework = 'Gradle';
     }
@@ -352,7 +431,8 @@ async function findFiles(
   dirPath: string,
   pattern: string,
   maxResults: number,
-  results: string[] = []
+  results: string[] = [],
+  ignoreResult: IgnoreResult
 ): Promise<string[]> {
   if (results.length >= maxResults) {
     return results;
@@ -368,10 +448,15 @@ async function findFiles(
 
       const fullPath = path.join(dirPath, entry.name);
 
+      // Check if ignored by .gitignore
+      if (ignoreResult.isIgnored(fullPath)) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
-        // Skip node_modules, .git, etc.
-        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
-          await findFiles(fullPath, pattern, maxResults, results);
+        // Skip common directories already covered by .gitignore or default excludes
+        if (entry.name !== 'node_modules' && entry.name !== '.git') {
+          await findFiles(fullPath, pattern, maxResults, results, ignoreResult);
         }
       } else if (entry.isFile()) {
         // Simple pattern matching (supports * wildcard)

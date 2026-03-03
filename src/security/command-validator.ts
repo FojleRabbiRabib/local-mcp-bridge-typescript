@@ -1,7 +1,4 @@
-export interface ValidationResult {
-  valid: boolean;
-  error?: string;
-}
+import { ValidationResult } from '../types/security.js';
 
 export class CommandValidator {
   constructor(private allowedCommands: string[]) {}

@@ -8,8 +8,12 @@ import * as z from 'zod';
 export function registerMLTools(
   server: McpServer,
   validator: PathValidator,
-  commandTimeout: number
+  commandTimeout: number,
+  workspace: string
 ) {
+  // Workspace is now required
+  const defaultPath = workspace;
+
   // jupyter_run tool - Run Jupyter notebook cell or file
   server.registerTool(
     'jupyter_run',
@@ -30,12 +34,13 @@ export function registerMLTools(
         };
       }
 
-      const args = ['nbconvert', '--execute', '--to', 'notebook', notebookPath];
+      const absolutePath = validation.resolvedPath!;
+      const args = ['nbconvert', '--execute', '--to', 'notebook', absolutePath];
       if (output) {
         args.push('--output', output);
       }
 
-      return executeCommand('jupyter', args, path.dirname(notebookPath), commandTimeout);
+      return executeCommand('jupyter', args, path.dirname(absolutePath), commandTimeout);
     }
   );
 
@@ -46,11 +51,11 @@ export function registerMLTools(
       description:
         'Create an isolated Python virtual environment. ALWAYS use this before installing Python packages to avoid polluting the system Python.',
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         name: z.string().optional().describe('Virtual environment name (default: venv)'),
       }),
     },
-    async ({ path: projectPath, name = 'venv' }) => {
+    async ({ path: projectPath = defaultPath, name = 'venv' }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -59,7 +64,8 @@ export function registerMLTools(
         };
       }
 
-      return executeCommand('python', ['-m', 'venv', name], projectPath, commandTimeout);
+      const absolutePath = validation.resolvedPath!;
+      return executeCommand('python', ['-m', 'venv', name], absolutePath, commandTimeout);
     }
   );
 
@@ -84,7 +90,7 @@ export function registerMLTools(
         args.push(...packages);
       }
 
-      return executeCommand('conda', args, '.', commandTimeout);
+      return executeCommand('conda', args, defaultPath, commandTimeout);
     }
   );
 
@@ -97,7 +103,7 @@ export function registerMLTools(
       inputSchema: z.object({}),
     },
     async () => {
-      return executeCommand('conda', ['env', 'list'], '.', commandTimeout);
+      return executeCommand('conda', ['env', 'list'], defaultPath, commandTimeout);
     }
   );
 
@@ -107,11 +113,11 @@ export function registerMLTools(
     {
       description: 'List installed Python packages (pip freeze)',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         output: z.string().optional().describe('Save to file (e.g., requirements.txt)'),
       }),
     },
-    async ({ path: projectPath = '.', output }) => {
+    async ({ path: projectPath = defaultPath, output }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -120,20 +126,30 @@ export function registerMLTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       if (output) {
         // Save to file
         return new Promise((resolve) => {
-          const proc = spawn('pip', ['freeze'], { cwd: projectPath, timeout: commandTimeout });
+          let resolved = false;
+          const proc = spawn('pip', ['freeze'], { cwd: absolutePath, timeout: commandTimeout });
           let stdout = '';
+          let stderr = '';
 
           proc.stdout.on('data', (data) => {
             stdout += data.toString();
           });
 
+          proc.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+
           proc.on('close', async (code) => {
+            if (resolved) return;
+            resolved = true;
+
             if (code === 0) {
               try {
-                const outputPath = path.join(projectPath, output);
+                const outputPath = path.join(absolutePath, output);
                 await fs.writeFile(outputPath, stdout, 'utf-8');
                 resolve({
                   content: [{ type: 'text' as const, text: `Saved to ${output}` }],
@@ -146,14 +162,40 @@ export function registerMLTools(
               }
             } else {
               resolve({
-                content: [{ type: 'text' as const, text: `Error: exit code ${code}` }],
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: `Error: exit code ${code}${stderr ? `\n${stderr}` : ''}`,
+                  },
+                ],
                 isError: true,
               });
             }
           });
+
+          proc.on('error', (error) => {
+            if (resolved) return;
+            resolved = true;
+            resolve({
+              content: [{ type: 'text' as const, text: `Error: ${error.message}` }],
+              isError: true,
+            });
+          });
+
+          proc.on('timeout', () => {
+            if (resolved) return;
+            resolved = true;
+            proc.kill();
+            resolve({
+              content: [
+                { type: 'text' as const, text: `pip freeze timed out after ${commandTimeout}ms` },
+              ],
+              isError: true,
+            });
+          });
         });
       } else {
-        return executeCommand('pip', ['freeze'], projectPath, commandTimeout);
+        return executeCommand('pip', ['freeze'], absolutePath, commandTimeout);
       }
     }
   );
@@ -177,11 +219,12 @@ export function registerMLTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       return {
         content: [
           {
             type: 'text' as const,
-            text: `To start TensorBoard, run:\ntensorboard --logdir=${logdir} --port=${port}\n\nNote: This tool cannot start background processes. Please run manually.`,
+            text: `To start TensorBoard, run:\ntensorboard --logdir=${absolutePath} --port=${port}\n\nNote: This tool cannot start background processes. Please run manually.`,
           },
         ],
       };
@@ -202,15 +245,15 @@ export function registerMLTools(
     },
     async ({ framework = 'cuda' }) => {
       if (framework === 'cuda') {
-        return executeCommand('nvidia-smi', [], '.', commandTimeout);
+        return executeCommand('nvidia-smi', [], defaultPath, commandTimeout);
       } else if (framework === 'pytorch') {
         const pythonCode =
           'import torch; print(f"CUDA available: {torch.cuda.is_available()}"); print(f"Device count: {torch.cuda.device_count()}"); print(f"Current device: {torch.cuda.current_device() if torch.cuda.is_available() else \'N/A\'}")';
-        return executeCommand('python', ['-c', pythonCode], '.', commandTimeout);
+        return executeCommand('python', ['-c', pythonCode], defaultPath, commandTimeout);
       } else if (framework === 'tensorflow') {
         const pythonCode =
           'import tensorflow as tf; print(f"GPU devices: {tf.config.list_physical_devices(\'GPU\')}")';
-        return executeCommand('python', ['-c', pythonCode], '.', commandTimeout);
+        return executeCommand('python', ['-c', pythonCode], defaultPath, commandTimeout);
       }
 
       return {
@@ -239,10 +282,11 @@ export function registerMLTools(
       }
 
       try {
-        const ext = path.extname(datasetPath).toLowerCase();
-        const stats = await fs.stat(datasetPath);
+        const absolutePath = validation.resolvedPath!;
+        const ext = path.extname(absolutePath).toLowerCase();
+        const stats = await fs.stat(absolutePath);
 
-        let info = `Dataset: ${path.basename(datasetPath)}\n`;
+        let info = `Dataset: ${path.basename(absolutePath)}\n`;
         info += `Size: ${formatBytes(stats.size)}\n`;
         info += `Modified: ${stats.mtime.toISOString()}\n\n`;
 
@@ -250,17 +294,17 @@ export function registerMLTools(
           // Use Python pandas to get CSV info
           const pythonCode = `
 import pandas as pd
-df = pd.read_csv('${datasetPath}')
+df = pd.read_csv('${absolutePath}')
 print(f"Rows: {len(df)}")
 print(f"Columns: {len(df.columns)}")
 print(f"\\nColumn names:\\n{', '.join(df.columns)}")
 print(f"\\nData types:\\n{df.dtypes}")
 print(f"\\nMemory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
 `;
-          return executeCommand('python', ['-c', pythonCode], '.', commandTimeout);
+          return executeCommand('python', ['-c', pythonCode], defaultPath, commandTimeout);
         } else if (ext === '.json') {
           // Read JSON and show structure
-          const content = await fs.readFile(datasetPath, 'utf-8');
+          const content = await fs.readFile(absolutePath, 'utf-8');
           const data = JSON.parse(content);
           info += `Type: ${Array.isArray(data) ? 'Array' : 'Object'}\n`;
           if (Array.isArray(data)) {
@@ -309,10 +353,11 @@ print(f"\\nMemory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
       }
 
       try {
-        const ext = path.extname(modelPath).toLowerCase();
-        const stats = await fs.stat(modelPath);
+        const absolutePath = validation.resolvedPath!;
+        const ext = path.extname(absolutePath).toLowerCase();
+        const stats = await fs.stat(absolutePath);
 
-        let info = `Model: ${path.basename(modelPath)}\n`;
+        let info = `Model: ${path.basename(absolutePath)}\n`;
         info += `Size: ${formatBytes(stats.size)}\n`;
         info += `Modified: ${stats.mtime.toISOString()}\n`;
 
@@ -347,6 +392,7 @@ function executeCommand(
   timeout: number
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   return new Promise((resolve) => {
+    let resolved = false;
     const proc = spawn(command, args, {
       cwd,
       timeout,
@@ -364,6 +410,9 @@ function executeCommand(
     });
 
     proc.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+
       const output = stdout + (stderr ? `\n\nSTDERR:\n${stderr}` : '');
       if (code === 0) {
         resolve({
@@ -378,11 +427,28 @@ function executeCommand(
     });
 
     proc.on('error', (error) => {
+      if (resolved) return;
+      resolved = true;
       resolve({
         content: [
           {
             type: 'text' as const,
             text: `Error executing ${command}: ${error.message}. Make sure it's installed.`,
+          },
+        ],
+        isError: true,
+      });
+    });
+
+    proc.on('timeout', () => {
+      if (resolved) return;
+      resolved = true;
+      proc.kill();
+      resolve({
+        content: [
+          {
+            type: 'text' as const,
+            text: `Command '${command}' timed out after ${timeout}ms`,
           },
         ],
         isError: true,

@@ -6,8 +6,12 @@ import * as z from 'zod';
 export function registerFormattingTools(
   server: McpServer,
   validator: PathValidator,
-  commandTimeout: number
+  commandTimeout: number,
+  workspace: string
 ) {
+  // Workspace is now required
+  const defaultPath = workspace;
+
   // format_code tool - Format code with prettier/eslint
   server.registerTool(
     'format_code',
@@ -15,7 +19,10 @@ export function registerFormattingTools(
       description:
         'Format code using prettier, eslint, black, rustfmt, or gofmt. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
       inputSchema: z.object({
-        path: z.string().describe('File or directory path to format'),
+        path: z
+          .string()
+          .optional()
+          .describe('File or directory path to format (default: workspace root)'),
         formatter: z
           .enum(['prettier', 'eslint', 'black', 'rustfmt', 'gofmt'])
           .optional()
@@ -23,7 +30,7 @@ export function registerFormattingTools(
         write: z.boolean().optional().describe('Write changes to file (default: false, dry-run)'),
       }),
     },
-    async ({ path: filePath, formatter, write = false }) => {
+    async ({ path: filePath = defaultPath, formatter, write = false }) => {
       const validation = validator.validate(filePath);
       if (!validation.valid) {
         return {
@@ -32,9 +39,10 @@ export function registerFormattingTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect formatter if not specified
-        const detectedFormatter = formatter || (await detectFormatter(filePath));
+        const detectedFormatter = formatter || (await detectFormatter(absolutePath));
 
         if (!detectedFormatter) {
           return {
@@ -48,7 +56,7 @@ export function registerFormattingTools(
           };
         }
 
-        const result = await runFormatter(detectedFormatter, filePath, write, commandTimeout);
+        const result = await runFormatter(detectedFormatter, absolutePath, write, commandTimeout);
         return result;
       } catch (error) {
         return {
@@ -66,14 +74,17 @@ export function registerFormattingTools(
       description:
         'Run linter (eslint, pylint, flake8, clippy, golangci-lint) to check code quality and find potential issues. USE THIS before committing to catch errors and maintain code quality.',
       inputSchema: z.object({
-        path: z.string().describe('File or directory path to lint'),
+        path: z
+          .string()
+          .optional()
+          .describe('File or directory path to lint (default: workspace root)'),
         linter: z
           .enum(['eslint', 'pylint', 'flake8', 'clippy', 'golangci-lint'])
           .optional()
           .describe('Linter to use (default: auto-detect)'),
       }),
     },
-    async ({ path: filePath, linter }) => {
+    async ({ path: filePath = defaultPath, linter }) => {
       const validation = validator.validate(filePath);
       if (!validation.valid) {
         return {
@@ -82,9 +93,10 @@ export function registerFormattingTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect linter if not specified
-        const detectedLinter = linter || (await detectLinter(filePath));
+        const detectedLinter = linter || (await detectLinter(absolutePath));
 
         if (!detectedLinter) {
           return {
@@ -98,7 +110,7 @@ export function registerFormattingTools(
           };
         }
 
-        const result = await runLinter(detectedLinter, filePath, commandTimeout);
+        const result = await runLinter(detectedLinter, absolutePath, commandTimeout);
         return result;
       } catch (error) {
         return {
@@ -115,14 +127,17 @@ export function registerFormattingTools(
     {
       description: 'Automatically fix linting issues',
       inputSchema: z.object({
-        path: z.string().describe('File or directory path to fix'),
+        path: z
+          .string()
+          .optional()
+          .describe('File or directory path to fix (default: workspace root)'),
         linter: z
           .enum(['eslint', 'black', 'rustfmt', 'gofmt'])
           .optional()
           .describe('Linter to use (default: auto-detect)'),
       }),
     },
-    async ({ path: filePath, linter }) => {
+    async ({ path: filePath = defaultPath, linter }) => {
       const validation = validator.validate(filePath);
       if (!validation.valid) {
         return {
@@ -131,9 +146,10 @@ export function registerFormattingTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect linter if not specified
-        const detectedLinter = linter || (await detectLinter(filePath));
+        const detectedLinter = linter || (await detectLinter(absolutePath));
 
         if (!detectedLinter) {
           return {
@@ -147,7 +163,7 @@ export function registerFormattingTools(
           };
         }
 
-        const result = await fixLintIssues(detectedLinter, filePath, commandTimeout);
+        const result = await fixLintIssues(detectedLinter, absolutePath, commandTimeout);
         return result;
       } catch (error) {
         return {
@@ -180,8 +196,9 @@ export function registerFormattingTools(
         };
       }
 
+      const absolutePath = validation.resolvedPath!;
       try {
-        const detectedLanguage = language || detectLanguage(filePath);
+        const detectedLanguage = language || detectLanguage(absolutePath);
 
         if (!detectedLanguage) {
           return {
@@ -195,7 +212,7 @@ export function registerFormattingTools(
           };
         }
 
-        const result = await checkSyntax(detectedLanguage, filePath, commandTimeout);
+        const result = await checkSyntax(detectedLanguage, absolutePath, commandTimeout);
         return result;
       } catch (error) {
         return {
@@ -374,6 +391,7 @@ function executeCommand(
   timeout: number
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   return new Promise((resolve) => {
+    let resolved = false;
     const proc = spawn(command, args, { timeout });
 
     let stdout = '';
@@ -388,6 +406,9 @@ function executeCommand(
     });
 
     proc.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+
       const output = stdout + (stderr ? `\n${stderr}` : '');
       if (code === 0) {
         resolve({
@@ -402,11 +423,28 @@ function executeCommand(
     });
 
     proc.on('error', (error) => {
+      if (resolved) return;
+      resolved = true;
       resolve({
         content: [
           {
             type: 'text' as const,
             text: `Error executing ${command}: ${error.message}. Make sure it's installed.`,
+          },
+        ],
+        isError: true,
+      });
+    });
+
+    proc.on('timeout', () => {
+      if (resolved) return;
+      resolved = true;
+      proc.kill();
+      resolve({
+        content: [
+          {
+            type: 'text' as const,
+            text: `Command '${command}' timed out after ${timeout}ms`,
           },
         ],
         isError: true,

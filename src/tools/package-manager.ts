@@ -6,8 +6,12 @@ import * as z from 'zod';
 export function registerPackageManagerTools(
   server: McpServer,
   validator: PathValidator,
-  commandTimeout: number
+  commandTimeout: number,
+  workspace: string
 ) {
+  // Workspace is now required
+  const defaultPath = workspace;
+
   // npm_install tool - Install npm dependencies
   server.registerTool(
     'npm_install',
@@ -15,12 +19,12 @@ export function registerPackageManagerTools(
       description:
         'Install npm dependencies from package.json. Run this after cloning a project or when dependencies change. More efficient than manually running npm install.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         packages: z.array(z.string()).optional().describe('Specific packages to install'),
         dev: z.boolean().optional().describe('Install as dev dependencies'),
       }),
     },
-    async ({ path: projectPath = '.', packages, dev = false }) => {
+    async ({ path: projectPath = defaultPath, packages, dev = false }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -33,7 +37,7 @@ export function registerPackageManagerTools(
       if (dev) args.push('--save-dev');
       if (packages && packages.length > 0) args.push(...packages);
 
-      return executeCommand('npm', args, projectPath, commandTimeout);
+      return executeCommand('npm', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -44,11 +48,11 @@ export function registerPackageManagerTools(
       description:
         'Run any npm script defined in package.json (e.g., build, test, dev). USE THIS to execute project scripts instead of running commands manually.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         script: z.string().describe('Script name to run'),
       }),
     },
-    async ({ path: projectPath = '.', script }) => {
+    async ({ path: projectPath = defaultPath, script }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -57,7 +61,7 @@ export function registerPackageManagerTools(
         };
       }
 
-      return executeCommand('npm', ['run', script], projectPath, commandTimeout);
+      return executeCommand('npm', ['run', script], validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -68,12 +72,12 @@ export function registerPackageManagerTools(
       description:
         'Install Python packages. Can install specific packages or all from requirements.txt. USE THIS for Python dependency management.',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         packages: z.array(z.string()).optional().describe('Packages to install'),
         requirements: z.boolean().optional().describe('Install from requirements.txt'),
       }),
     },
-    async ({ path: projectPath = '.', packages, requirements = false }) => {
+    async ({ path: projectPath = defaultPath, packages, requirements = false }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -89,7 +93,7 @@ export function registerPackageManagerTools(
         args.push(...packages);
       }
 
-      return executeCommand('pip', args, projectPath, commandTimeout);
+      return executeCommand('pip', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -99,11 +103,11 @@ export function registerPackageManagerTools(
     {
       description: 'Install PHP dependencies with Composer',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         dev: z.boolean().optional().describe('Install dev dependencies'),
       }),
     },
-    async ({ path: projectPath = '.', dev = false }) => {
+    async ({ path: projectPath = defaultPath, dev = false }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -115,7 +119,7 @@ export function registerPackageManagerTools(
       const args = ['install'];
       if (!dev) args.push('--no-dev');
 
-      return executeCommand('composer', args, projectPath, commandTimeout);
+      return executeCommand('composer', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -125,11 +129,11 @@ export function registerPackageManagerTools(
     {
       description: 'Run Laravel Artisan command',
       inputSchema: z.object({
-        path: z.string().optional().describe('Laravel project path (default: current directory)'),
+        path: z.string().optional().describe('Laravel project path (default: workspace root)'),
         command: z.string().describe('Artisan command (e.g., "migrate", "make:model User")'),
       }),
     },
-    async ({ path: projectPath = '.', command }) => {
+    async ({ path: projectPath = defaultPath, command }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -139,7 +143,7 @@ export function registerPackageManagerTools(
       }
 
       const args = ['artisan', ...command.split(' ')];
-      return executeCommand('php', args, projectPath, commandTimeout);
+      return executeCommand('php', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -149,11 +153,11 @@ export function registerPackageManagerTools(
     {
       description: 'Run Django management command',
       inputSchema: z.object({
-        path: z.string().optional().describe('Django project path (default: current directory)'),
+        path: z.string().optional().describe('Django project path (default: workspace root)'),
         command: z.string().describe('Management command (e.g., "migrate", "makemigrations")'),
       }),
     },
-    async ({ path: projectPath = '.', command }) => {
+    async ({ path: projectPath = defaultPath, command }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -163,7 +167,7 @@ export function registerPackageManagerTools(
       }
 
       const args = ['manage.py', ...command.split(' ')];
-      return executeCommand('python', args, projectPath, commandTimeout);
+      return executeCommand('python', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -173,11 +177,11 @@ export function registerPackageManagerTools(
     {
       description: 'Build Rust project with Cargo',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         release: z.boolean().optional().describe('Build in release mode'),
       }),
     },
-    async ({ path: projectPath = '.', release = false }) => {
+    async ({ path: projectPath = defaultPath, release = false }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -189,7 +193,7 @@ export function registerPackageManagerTools(
       const args = ['build'];
       if (release) args.push('--release');
 
-      return executeCommand('cargo', args, projectPath, commandTimeout);
+      return executeCommand('cargo', args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -199,11 +203,11 @@ export function registerPackageManagerTools(
     {
       description: 'Build Go project',
       inputSchema: z.object({
-        path: z.string().optional().describe('Project path (default: current directory)'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         output: z.string().optional().describe('Output binary name'),
       }),
     },
-    async ({ path: projectPath = '.', output }) => {
+    async ({ path: projectPath = defaultPath, output }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -215,7 +219,7 @@ export function registerPackageManagerTools(
       const args = ['build'];
       if (output) args.push('-o', output);
 
-      return executeCommand('go', args, projectPath, commandTimeout);
+      return executeCommand('go', args, validation.resolvedPath!, commandTimeout);
     }
   );
 }
@@ -228,6 +232,7 @@ function executeCommand(
   timeout: number
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   return new Promise((resolve) => {
+    let resolved = false;
     const proc = spawn(command, args, {
       cwd,
       timeout,
@@ -245,6 +250,9 @@ function executeCommand(
     });
 
     proc.on('close', (code) => {
+      if (resolved) return;
+      resolved = true;
+
       const output = stdout + (stderr ? `\n\nSTDERR:\n${stderr}` : '');
       if (code === 0) {
         resolve({
@@ -259,11 +267,28 @@ function executeCommand(
     });
 
     proc.on('error', (error) => {
+      if (resolved) return;
+      resolved = true;
       resolve({
         content: [
           {
             type: 'text' as const,
             text: `Error executing ${command}: ${error.message}. Make sure it's installed.`,
+          },
+        ],
+        isError: true,
+      });
+    });
+
+    proc.on('timeout', () => {
+      if (resolved) return;
+      resolved = true;
+      proc.kill();
+      resolve({
+        content: [
+          {
+            type: 'text' as const,
+            text: `Command '${command}' timed out after ${timeout}ms`,
           },
         ],
         isError: true,

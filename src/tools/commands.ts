@@ -8,8 +8,12 @@ export function registerCommandTools(
   server: McpServer,
   commandValidator: CommandValidator,
   pathValidator: PathValidator,
-  commandTimeout: number
+  commandTimeout: number,
+  workspace: string
 ) {
+  // Workspace is now required - always use it as the default cwd
+  const defaultCwd = workspace;
+
   // execute_command tool - Execute a shell command
   server.registerTool(
     'execute_command',
@@ -19,10 +23,13 @@ export function registerCommandTools(
       inputSchema: z.object({
         command: z.string().describe('Command to execute (must be in allowed list)'),
         args: z.array(z.string()).optional().describe('Command arguments'),
-        cwd: z.string().optional().describe('Working directory for the command'),
+        cwd: z
+          .string()
+          .optional()
+          .describe('Working directory for the command (default: workspace root)'),
       }),
     },
-    async ({ command, args = [], cwd }) => {
+    async ({ command, args = [], cwd = defaultCwd }) => {
       // Validate command
       const cmdValidation = commandValidator.validate(command);
       if (!cmdValidation.valid) {
@@ -32,20 +39,20 @@ export function registerCommandTools(
         };
       }
 
-      // Validate working directory if provided
-      if (cwd) {
-        const pathValidation = pathValidator.validate(cwd);
-        if (!pathValidation.valid) {
-          return {
-            content: [{ type: 'text', text: pathValidation.error! }],
-            isError: true,
-          };
-        }
+      // Validate working directory
+      const pathValidation = pathValidator.validate(cwd);
+      if (!pathValidation.valid) {
+        return {
+          content: [{ type: 'text', text: pathValidation.error! }],
+          isError: true,
+        };
       }
 
+      const absoluteCwd = pathValidation.resolvedPath!;
       return new Promise((resolve) => {
+        let resolved = false;
         const proc = spawn(command, args, {
-          cwd: cwd || process.cwd(),
+          cwd: absoluteCwd,
           timeout: commandTimeout,
         });
 
@@ -61,6 +68,9 @@ export function registerCommandTools(
         });
 
         proc.on('close', (code) => {
+          if (resolved) return;
+          resolved = true;
+
           const output = stdout + (stderr ? `\n\nSTDERR:\n${stderr}` : '');
           resolve({
             content: [
@@ -73,8 +83,21 @@ export function registerCommandTools(
         });
 
         proc.on('error', (error) => {
+          if (resolved) return;
+          resolved = true;
+
           resolve({
             content: [{ type: 'text', text: `Error executing command: ${error.message}` }],
+            isError: true,
+          });
+        });
+
+        proc.on('timeout', () => {
+          if (resolved) return;
+          resolved = true;
+          proc.kill();
+          resolve({
+            content: [{ type: 'text', text: `Command timed out after ${commandTimeout}ms` }],
             isError: true,
           });
         });

@@ -3,20 +3,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
+import { loadIgnoreFiles } from '../utils/ignore.js';
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  status: 'todo' | 'in-progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
-  tags: string[];
-  created: string;
-  updated: string;
-  dueDate?: string;
-}
+import { Task } from '../types/tasks.js';
 
-export function registerTaskTools(server: McpServer, validator: PathValidator) {
+export function registerTaskTools(server: McpServer, validator: PathValidator, workspace: string) {
+  // Workspace is now required
+  const defaultPath = workspace;
+
   // create_task tool - Create a new task
   server.registerTool(
     'create_task',
@@ -24,7 +18,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       description:
         'Create a new task/todo item with title, description, priority, tags, and optional due date. Tasks are stored in .mcp-tasks.json in the project root.',
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         title: z.string().describe('Task title'),
         description: z.string().optional().describe('Task description'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('Task priority'),
@@ -32,7 +26,14 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         dueDate: z.string().optional().describe('Due date (ISO format)'),
       }),
     },
-    async ({ path: projectPath, title, description, priority = 'medium', tags = [], dueDate }) => {
+    async ({
+      path: projectPath = defaultPath,
+      title,
+      description,
+      priority = 'medium',
+      tags = [],
+      dueDate,
+    }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -42,7 +43,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       }
 
       try {
-        const tasks = await loadTasks(projectPath);
+        const absolutePath = validation.resolvedPath!;
+        const tasks = await loadTasks(absolutePath);
         const newTask: Task = {
           id: generateId(),
           title,
@@ -56,7 +58,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         };
 
         tasks.push(newTask);
-        await saveTasks(projectPath, tasks);
+        await saveTasks(absolutePath, tasks);
 
         return {
           content: [
@@ -82,7 +84,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       description:
         'List all tasks/todos with optional filtering by status, priority, or tag. USE THIS to see what work is pending or to track progress.',
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         status: z
           .enum(['todo', 'in-progress', 'done', 'all'])
           .optional()
@@ -91,7 +93,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         tag: z.string().optional().describe('Filter by tag'),
       }),
     },
-    async ({ path: projectPath, status = 'all', priority, tag }) => {
+    async ({ path: projectPath = defaultPath, status = 'all', priority, tag }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -101,7 +103,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       }
 
       try {
-        let tasks = await loadTasks(projectPath);
+        const absolutePath = validation.resolvedPath!;
+        let tasks = await loadTasks(absolutePath);
 
         // Apply filters
         if (status !== 'all') {
@@ -150,7 +153,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       description:
         "Update an existing task's status, priority, title, or description. USE THIS to mark tasks as in-progress or done, or to modify task details.",
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         id: z.string().describe('Task ID'),
         status: z.enum(['todo', 'in-progress', 'done']).optional().describe('New status'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('New priority'),
@@ -158,7 +161,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         description: z.string().optional().describe('New description'),
       }),
     },
-    async ({ path: projectPath, id, status, priority, title, description }) => {
+    async ({ path: projectPath = defaultPath, id, status, priority, title, description }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -168,7 +171,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       }
 
       try {
-        const tasks = await loadTasks(projectPath);
+        const absolutePath = validation.resolvedPath!;
+        const tasks = await loadTasks(absolutePath);
         const taskIndex = tasks.findIndex((t) => t.id === id);
 
         if (taskIndex === -1) {
@@ -185,7 +189,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         if (description !== undefined) task.description = description;
         task.updated = new Date().toISOString();
 
-        await saveTasks(projectPath, tasks);
+        await saveTasks(absolutePath, tasks);
 
         return {
           content: [{ type: 'text' as const, text: `Task updated successfully: ${task.title}` }],
@@ -206,11 +210,11 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       description:
         'Permanently delete a task by its ID. USE THIS to remove completed or cancelled tasks.',
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         id: z.string().describe('Task ID'),
       }),
     },
-    async ({ path: projectPath, id }) => {
+    async ({ path: projectPath = defaultPath, id }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -220,7 +224,8 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       }
 
       try {
-        const tasks = await loadTasks(projectPath);
+        const absolutePath = validation.resolvedPath!;
+        const tasks = await loadTasks(absolutePath);
         const taskIndex = tasks.findIndex((t) => t.id === id);
 
         if (taskIndex === -1) {
@@ -231,7 +236,7 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
         }
 
         const deletedTask = tasks.splice(taskIndex, 1)[0];
-        await saveTasks(projectPath, tasks);
+        await saveTasks(absolutePath, tasks);
 
         return {
           content: [{ type: 'text' as const, text: `Task deleted: ${deletedTask.title}` }],
@@ -250,16 +255,16 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
     'search_todos',
     {
       description:
-        'Search code for TODO, FIXME, HACK, or NOTE comments. EFFICIENT way to find all pending work, technical debt markers, or important notes scattered across the codebase.',
+        'Search code for TODO, FIXME, HACK, or NOTE comments. EFFICIENT way to find all pending work, technical debt markers, or important notes scattered across the codebase. Automatically respects .gitignore.',
       inputSchema: z.object({
-        path: z.string().describe('Project path'),
+        path: z.string().optional().describe('Project path (default: workspace root)'),
         type: z
           .enum(['TODO', 'FIXME', 'HACK', 'NOTE', 'all'])
           .optional()
           .describe('Comment type to search for'),
       }),
     },
-    async ({ path: projectPath, type = 'all' }) => {
+    async ({ path: projectPath = defaultPath, type = 'all' }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -269,11 +274,16 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
       }
 
       try {
+        const absolutePath = validation.resolvedPath!;
+        const projectRoot = workspace ? path.resolve(workspace) : absolutePath;
+        const ignoreResult = await loadIgnoreFiles(projectRoot);
+
         const pattern = type === 'all' ? 'TODO|FIXME|HACK|NOTE' : type;
         const { spawn } = await import('child_process');
 
         return new Promise((resolve) => {
-          const proc = spawn('grep', ['-rn', '-E', `(${pattern}):`, projectPath], {
+          let resolved = false;
+          const proc = spawn('grep', ['-rn', '-E', `(${pattern}):`, absolutePath], {
             timeout: 10000,
           });
 
@@ -289,9 +299,24 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
           });
 
           proc.on('close', (code) => {
+            if (resolved) return;
+            resolved = true;
+
             if (code === 0) {
+              const lines = stdout.split('\n');
+              const filteredLines = lines.filter((line) => {
+                if (!line) return false;
+                const filePathMatch = line.match(/^([^:]+):/);
+                if (filePathMatch) {
+                  return !ignoreResult.isIgnored(filePathMatch[1]);
+                }
+                return true;
+              });
+
               resolve({
-                content: [{ type: 'text' as const, text: stdout || 'No TODOs found' }],
+                content: [
+                  { type: 'text' as const, text: filteredLines.join('\n') || 'No TODOs found' },
+                ],
               });
             } else if (code === 1) {
               resolve({
@@ -299,15 +324,29 @@ export function registerTaskTools(server: McpServer, validator: PathValidator) {
               });
             } else {
               resolve({
-                content: [{ type: 'text' as const, text: `Error: ${stderr}` }],
+                content: [
+                  { type: 'text' as const, text: `Error: ${stderr || 'grep command failed'}` },
+                ],
                 isError: true,
               });
             }
           });
 
           proc.on('error', (error) => {
+            if (resolved) return;
+            resolved = true;
             resolve({
               content: [{ type: 'text' as const, text: `Error: ${error.message}` }],
+              isError: true,
+            });
+          });
+
+          proc.on('timeout', () => {
+            if (resolved) return;
+            resolved = true;
+            proc.kill();
+            resolve({
+              content: [{ type: 'text' as const, text: 'Search timed out after 10000ms' }],
               isError: true,
             });
           });

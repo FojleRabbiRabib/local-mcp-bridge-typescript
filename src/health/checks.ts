@@ -1,23 +1,7 @@
-export interface HealthCheck {
-  status: 'pass' | 'fail';
-  responseTime?: number;
-  error?: string;
-}
+import { HealthCheck, HealthCheckResult } from '../types/health.js';
 
 interface GlobalWithSessionCount {
   getSessionCount?: () => number;
-}
-
-export interface HealthCheckResult {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  version: string;
-  uptime: number;
-  timestamp: string;
-  checks: {
-    memory: HealthCheck;
-    disk: HealthCheck;
-    sessions: HealthCheck;
-  };
 }
 
 export class HealthChecker {

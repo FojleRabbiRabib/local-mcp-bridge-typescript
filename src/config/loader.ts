@@ -2,14 +2,21 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { DEFAULT_CONFIG } from './defaults.js';
-import { AgentConfig, ConfigFile } from './types.js';
+import { AgentConfig, ConfigFile } from '../types/config.js';
 
 /**
  * Load configuration from global and workspace-specific config files
  * Priority: workspace config > global config > defaults
  */
-export async function loadConfig(workspace?: string): Promise<AgentConfig> {
-  let config = { ...DEFAULT_CONFIG };
+export async function loadConfig(workspace: string): Promise<AgentConfig> {
+  const resolvedWorkspace = path.resolve(workspace);
+  let config: AgentConfig = {
+    ...DEFAULT_CONFIG,
+    workspace: resolvedWorkspace,
+    // When a workspace is explicitly provided, we default allowedPaths to just that workspace
+    // instead of process.cwd() which might be the server's own source code.
+    allowedPaths: [resolvedWorkspace],
+  };
 
   // Load global config from ~/.mcp-agent.json
   const globalConfigPath = path.join(os.homedir(), '.mcp-agent.json');
@@ -18,24 +25,21 @@ export async function loadConfig(workspace?: string): Promise<AgentConfig> {
     config = mergeConfig(config, globalConfig);
   }
 
-  // Load workspace-specific config if workspace is provided
-  if (workspace) {
-    const resolvedWorkspace = path.resolve(workspace);
-    const workspaceConfigPath = path.join(resolvedWorkspace, '.mcp-agent.json');
-    const workspaceConfig = await loadConfigFile(workspaceConfigPath);
-    if (workspaceConfig) {
-      config = mergeConfig(config, workspaceConfig);
-    }
+  // Load workspace-specific config
+  const workspaceConfigPath = path.join(resolvedWorkspace, '.mcp-agent.json');
+  const workspaceConfig = await loadConfigFile(workspaceConfigPath);
+  if (workspaceConfig) {
+    config = mergeConfig(config, workspaceConfig);
+  }
 
-    // Ensure workspace is always in allowedPaths
-    // Normalize existing allowed paths for comparison
-    const normalizedAllowedPaths = config.allowedPaths.map((p) =>
-      p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : path.resolve(p)
-    );
+  // Ensure workspace is always in allowedPaths
+  // Normalize existing allowed paths for comparison
+  const normalizedAllowedPaths = config.allowedPaths.map((p) =>
+    p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : path.resolve(p)
+  );
 
-    if (!normalizedAllowedPaths.includes(resolvedWorkspace)) {
-      config.allowedPaths.push(resolvedWorkspace);
-    }
+  if (!normalizedAllowedPaths.includes(resolvedWorkspace)) {
+    config.allowedPaths.push(resolvedWorkspace);
   }
 
   // Expand home directory in paths

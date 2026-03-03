@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { validateEnv } from '../config/environment.js';
 
 describe('Environment Validation', () => {
