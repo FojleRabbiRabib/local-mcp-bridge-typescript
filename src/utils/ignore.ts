@@ -26,7 +26,14 @@ export async function loadIgnoreFiles(projectRoot: string): Promise<IgnoreResult
   return {
     isIgnored: (filePath: string) => {
       // ignore library expects paths relative to the root
-      const relativePath = path.relative(projectRoot, filePath);
+      // Handle both absolute and relative paths
+      let relativePath: string;
+      if (path.isAbsolute(filePath)) {
+        relativePath = path.relative(projectRoot, filePath);
+      } else {
+        // Already relative, use as-is
+        relativePath = filePath;
+      }
       if (!relativePath) return false;
       return ig.ignores(relativePath);
     },

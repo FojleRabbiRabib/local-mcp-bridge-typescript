@@ -627,14 +627,16 @@ export function registerFileSystemTools(
     'search_files',
     {
       description:
-        'Search for text patterns across files using grep. MUCH FASTER than manually reading files. Automatically respects .gitignore. USE THIS to find where code or text is located.',
+        'Search for literal text strings in files using grep. MUCH FASTER than manually reading files. Automatically respects .gitignore. USE THIS to find where code or text is located. Searches for literal strings, not regex patterns.',
       inputSchema: z.object({
-        pattern: z.string().describe('Text pattern to search for'),
-        path: z.string().optional().describe('Directory to search in (default: workspace root)'),
-        filePattern: z.string().optional().describe('File pattern to match (e.g., "*.ts")'),
+        pattern: z.string().describe('Literal text string to search for (not a regex pattern)'),
+        path: z
+          .string()
+          .optional()
+          .describe('File or directory to search in (default: workspace root)'),
       }),
     },
-    async ({ pattern, path: searchPath = defaultPath, filePattern: _filePattern }) => {
+    async ({ pattern, path: searchPath = defaultPath }) => {
       const validation = validator.validate(searchPath);
       if (!validation.valid) {
         return {
@@ -646,27 +648,30 @@ export function registerFileSystemTools(
       const absolutePath = validation.resolvedPath!;
 
       try {
-        // Grep doesn't natively respect .gitignore without a plugin or using ripgrep.
-        // We will use a more sophisticated approach if ripgrep (rg) is available,
-        // or fall back to standard grep with exclusions if not.
-
         const projectRoot = path.resolve(workspace);
         const ignoreResult = await loadIgnoreFiles(projectRoot);
 
-        // For simplicity and compatibility, we'll use a recursive grep but manually filter if needed,
-        // or better, use git grep if it's a git repo.
-        // However, a robust approach is to use 'grep' with '--exclude-dir' for common patterns.
+        // Detect if path is a file or directory
+        const stat = await fs.stat(absolutePath).catch(() => null);
+        const isFile = stat?.isFile() ?? false;
 
         const excludeDirs = ['.git', 'node_modules', 'dist', 'build', 'out'];
-        const grepArgs = ['-r', '-n', '-i'];
+        // -F: fixed strings (not regex), -n: show line numbers, -i: case insensitive
+        const grepArgs = ['-F', '-n', '-i'];
 
-        for (const dir of excludeDirs) {
-          grepArgs.push('--exclude-dir', dir);
+        // Add -r (recursive) only for directories
+        if (!isFile) {
+          grepArgs.push('-r');
+          for (const dir of excludeDirs) {
+            grepArgs.push('--exclude-dir', dir);
+          }
         }
 
-        grepArgs.push(pattern, absolutePath);
+        // Use -- to separate options from pattern/path
+        grepArgs.push('--', pattern, absolutePath);
 
         const proc = spawn('grep', grepArgs, {
+          cwd: workspace,
           timeout: commandTimeout,
         });
 
