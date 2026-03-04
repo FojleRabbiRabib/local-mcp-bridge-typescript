@@ -11,6 +11,7 @@ import { registerPackageManagerTools } from '../tools/package-manager.js';
 import { registerTaskTools } from '../tools/tasks.js';
 import { registerMLTools } from '../tools/ml.js';
 import { registerAndroidTools } from '../tools/android.js';
+import { registerImageTools } from '../tools/images.js';
 
 export function createAgentServer(config: AgentConfig): McpServer {
   // Validate workspace is provided and valid
@@ -81,6 +82,9 @@ export function createAgentServer(config: AgentConfig): McpServer {
 
   // Register Android development tools
   registerAndroidTools(server, pathValidator, config.commandTimeout, config.workspace);
+
+  // Register image reading tools
+  registerImageTools(server, pathValidator);
 
   return server;
 }
