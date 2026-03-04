@@ -81,6 +81,82 @@ describe('Project Tools', () => {
 
       expect(result).toBeDefined();
     });
+
+    it('should respect nested .gitignore files (Laravel-like structure)', async () => {
+      // Create a Laravel-like storage directory structure with nested .gitignore files
+      const storageDir = path.join(tempDir, 'storage');
+      const viewsDir = path.join(storageDir, 'framework', 'views');
+      const logsDir = path.join(storageDir, 'logs');
+
+      await fs.mkdir(viewsDir, { recursive: true });
+      await fs.mkdir(logsDir, { recursive: true });
+
+      // Create nested .gitignore files
+      await fs.writeFile(path.join(viewsDir, '.gitignore'), '*\n');
+      await fs.writeFile(path.join(logsDir, '.gitignore'), '*\n');
+
+      // Create files that should be ignored according to nested .gitignore
+      await fs.writeFile(path.join(viewsDir, 'compiled-view-1.php'), '<?php // compiled');
+      await fs.writeFile(path.join(viewsDir, 'compiled-view-2.php'), '<?php // compiled');
+      await fs.writeFile(path.join(logsDir, 'laravel.log'), '[2024-01-01] log entry');
+
+      // Re-register tools with the new tempDir structure
+      const newHandlers = new Map<string, ToolHandler>();
+      const mockServer = {
+        registerTool: (name: string, config: Record<string, unknown>, handler: ToolHandler) => {
+          newHandlers.set(name, handler);
+        },
+      } as unknown;
+      registerProjectTools(mockServer, validator, tempDir);
+
+      const handler = newHandlers.get('get_project_structure');
+      if (!handler) return;
+
+      const result = await handler({ path: tempDir });
+
+      expect(result.isError).not.toBe(true);
+      const output = result.content[0].text;
+
+      // Should show the directories
+      expect(output).toContain('storage');
+      expect(output).toContain('framework');
+      expect(output).toContain('views');
+      expect(output).toContain('logs');
+
+      // Should NOT show the ignored files (compiled views and logs)
+      expect(output).not.toContain('compiled-view-1.php');
+      expect(output).not.toContain('compiled-view-2.php');
+      expect(output).not.toContain('laravel.log');
+
+      // .gitignore files themselves should also be hidden (they are dotfiles)
+      expect(output).not.toContain('.gitignore');
+    });
+
+    it('should handle negation patterns in nested .gitignore', async () => {
+      // Create directory with negation pattern
+      const publicDir = path.join(tempDir, 'public', 'uploads');
+      await fs.mkdir(publicDir, { recursive: true });
+
+      // .gitignore that ignores everything except README.md
+      await fs.writeFile(path.join(publicDir, '.gitignore'), '*\n!README.md\n');
+
+      // Create files
+      await fs.writeFile(path.join(publicDir, 'README.md'), '# Uploads Directory');
+      await fs.writeFile(path.join(publicDir, 'user-upload.jpg'), 'image data');
+
+      const handler = handlers.get('get_project_structure');
+      if (!handler) return;
+
+      const result = await handler({ path: tempDir });
+
+      expect(result.isError).not.toBe(true);
+      const output = result.content[0].text;
+
+      // Should show README.md (negation pattern - not ignored)
+      expect(output).toContain('README.md');
+      // Should NOT show user upload (matched by *)
+      expect(output).not.toContain('user-upload.jpg');
+    });
   });
 
   describe('analyze_project', () => {
