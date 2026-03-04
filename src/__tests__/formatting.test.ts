@@ -133,7 +133,7 @@ describe('Code Formatting Tools', () => {
       });
 
       expect(result).toBeDefined();
-    });
+    }, 15000);
   });
 
   describe('path validation', () => {

@@ -17,14 +17,14 @@ export function registerFormattingTools(
     'format_code',
     {
       description:
-        'Format code using prettier, eslint, black, rustfmt, or gofmt. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
+        'Format code using prettier, eslint, black, pint, rustfmt, or gofmt. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
       inputSchema: z.object({
         path: z
           .string()
           .optional()
           .describe('File or directory path to format (default: workspace root)'),
         formatter: z
-          .enum(['prettier', 'eslint', 'black', 'rustfmt', 'gofmt'])
+          .enum(['prettier', 'eslint', 'black', 'pint', 'rustfmt', 'gofmt'])
           .optional()
           .describe('Formatter to use (default: auto-detect)'),
         write: z.boolean().optional().describe('Write changes to file (default: false, dry-run)'),
@@ -232,6 +232,8 @@ async function detectFormatter(filePath: string): Promise<string | null> {
     return 'prettier';
   } else if (ext === 'py') {
     return 'black';
+  } else if (ext === 'php') {
+    return 'pint';
   } else if (ext === 'rs') {
     return 'rustfmt';
   } else if (ext === 'go') {
@@ -288,6 +290,7 @@ async function runFormatter(
     prettier: write ? ['prettier', '--write', filePath] : ['prettier', '--check', filePath],
     eslint: write ? ['eslint', '--fix', filePath] : ['eslint', filePath],
     black: write ? ['black', filePath] : ['black', '--check', filePath],
+    pint: write ? ['./vendor/bin/pint', filePath] : ['./vendor/bin/pint', '--test', filePath],
     rustfmt: ['rustfmt', write ? filePath : '--check', filePath],
     gofmt: write ? ['gofmt', '-w', filePath] : ['gofmt', '-d', filePath],
   };
@@ -337,6 +340,7 @@ async function fixLintIssues(
   const commands: Record<string, string[]> = {
     eslint: ['eslint', '--fix', filePath],
     black: ['black', filePath],
+    pint: ['./vendor/bin/pint', filePath],
     rustfmt: ['rustfmt', filePath],
     gofmt: ['gofmt', '-w', filePath],
   };
