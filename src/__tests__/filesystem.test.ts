@@ -313,6 +313,43 @@ describe('Filesystem Tools', () => {
 
       expect(result.isError).toBe(true);
     });
+
+    it('should show ignored files when showIgnored is true', async () => {
+      // Create a .gitignore file
+      // Note: Directory patterns without trailing slash to match the directory itself
+      await fs.writeFile(path.join(tempDir, '.gitignore'), '*.log\nbuild\nignored-dir\n');
+
+      // Create files that match the ignore patterns
+      await fs.writeFile(path.join(tempDir, 'debug.log'), 'log content');
+      await fs.mkdir(path.join(tempDir, 'build'));
+      await fs.mkdir(path.join(tempDir, 'ignored-dir'));
+
+      const handler = handlers.get('list_directory');
+
+      // Without showIgnored, ignored files/dirs should be hidden
+      const resultNormal = await handler({ path: tempDir, showIgnored: false });
+      expect(resultNormal.isError).not.toBe(true);
+      expect(resultNormal.content[0].text).not.toContain('debug.log');
+      expect(resultNormal.content[0].text).not.toContain('[IGNORED]');
+
+      // With showIgnored, all files should be shown with [IGNORED] tag
+      const resultShowIgnored = await handler({ path: tempDir, showIgnored: true });
+      expect(resultShowIgnored.isError).not.toBe(true);
+      expect(resultShowIgnored.content[0].text).toContain('debug.log [IGNORED]');
+      expect(resultShowIgnored.content[0].text).toContain('build [IGNORED]');
+      expect(resultShowIgnored.content[0].text).toContain('ignored-dir [IGNORED]');
+      expect(resultShowIgnored.content[0].text).toContain('test1.ts');
+      expect(resultShowIgnored.content[0].text).toContain('test2.ts');
+    });
+
+    it('should default showIgnored to false', async () => {
+      const handler = handlers.get('list_directory');
+
+      // Not passing showIgnored should default to false (current behavior)
+      const result = await handler({ path: tempDir });
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).not.toContain('[IGNORED]');
+    });
   });
 
   // ===== create_directory tests =====

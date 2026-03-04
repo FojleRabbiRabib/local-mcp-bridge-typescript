@@ -166,9 +166,14 @@ export function registerFileSystemTools(
           .string()
           .optional()
           .describe('Path to the directory to list (default: workspace root)'),
+        showIgnored: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Show files that are ignored by .gitignore'),
       }),
     },
-    async ({ path: dirPath = defaultPath }) => {
+    async ({ path: dirPath = defaultPath, showIgnored = false }) => {
       const validation = validator.validate(dirPath);
       if (!validation.valid) {
         return {
@@ -194,14 +199,21 @@ export function registerFileSystemTools(
 
         const entries = await fs.readdir(absolutePath, { withFileTypes: true });
         const formatted = entries
-          .filter((entry) => {
-            const fullPath = path.join(absolutePath, entry.name);
-            return !ignoreResult.isIgnored(fullPath);
-          })
           .map((entry) => {
+            const fullPath = path.join(absolutePath, entry.name);
+            // For directories, also check with trailing slash for proper gitignore matching
+            const isIgnored =
+              ignoreResult.isIgnored(fullPath) ||
+              (entry.isDirectory() && ignoreResult.isIgnored(fullPath + '/'));
             const type = entry.isDirectory() ? '[DIR] ' : '[FILE]';
-            return `${type} ${entry.name}`;
+            const ignoredTag = isIgnored ? ' [IGNORED]' : '';
+            return {
+              isIgnored,
+              formatted: `${type}${entry.name}${ignoredTag}`,
+            };
           })
+          .filter((item) => showIgnored || !item.isIgnored)
+          .map((item) => item.formatted)
           .join('\n');
 
         return {
