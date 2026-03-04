@@ -77,10 +77,24 @@ async function loadConfigFile(filePath: string): Promise<Partial<AgentConfig> | 
 }
 
 function mergeConfig(base: AgentConfig, override: Partial<AgentConfig>): AgentConfig {
-  return {
+  const config: AgentConfig = {
     ...base,
     ...override,
   };
+
+  // Merge additionalAllowedCommands into allowedCommands
+  // Only if allowedCommands is not explicitly set in override
+  if (
+    override.additionalAllowedCommands &&
+    override.additionalAllowedCommands.length > 0 &&
+    !override.allowedCommands
+  ) {
+    config.allowedCommands = [...config.allowedCommands, ...override.additionalAllowedCommands];
+    // Remove duplicates while preserving order
+    config.allowedCommands = [...new Set(config.allowedCommands)];
+  }
+
+  return config;
 }
 
 function expandHome(filePath: string): string {

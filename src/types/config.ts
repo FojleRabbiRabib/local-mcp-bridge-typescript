@@ -8,6 +8,11 @@ export interface AgentConfig {
   allowedPaths: string[];
   deniedPaths: string[];
   allowedCommands: string[];
+  /** Additional commands to append to the default allowedCommands list.
+   * Unlike allowedCommands which replaces defaults, this adds to them.
+   * If both allowedCommands and additionalAllowedCommands are set,
+   * allowedCommands takes precedence (it replaces entirely). */
+  additionalAllowedCommands?: string[];
   maxFileSize: number;
   enableCommandExecution: boolean;
   commandTimeout: number;

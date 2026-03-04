@@ -1,3 +1,14 @@
+/*
+ * MCP Agent Configuration Example
+ *
+ * Command Permissions:
+ * - allowedCommands: Replaces ALL default commands. Use this to specify exactly which commands are allowed.
+ * - additionalAllowedCommands: ADDS to the default commands. Use this to allow extra commands without losing defaults.
+ *
+ * Note: If both are set, allowedCommands takes precedence (additionalAllowedCommands is ignored).
+ *
+ * Default commands include: ls, grep, find, cat, head, tail, git, npm, node, python, python3, gradlew, ./gradlew
+ */
 {
   "version": "1.0.0",
   "server": {
@@ -32,6 +43,11 @@
       "node",
       "python",
       "python3"
+    ],
+    "additionalAllowedCommands": [
+      "composer",
+      "laravel",
+      "pint"
     ],
     "enableCommandExecution": true
   },
