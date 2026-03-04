@@ -15,10 +15,12 @@ describe('Image Tools', () => {
   const handlers = new Map<string, ToolHandler>();
 
   // Test image data (1x1 red pixel PNG)
-  const testPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+  const testPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
 
   // Test image data (minimal JPEG)
-  const testJpegBase64 = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAACAgBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AT//Z';
+  const testJpegBase64 =
+    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAACAgBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AT//Z';
 
   beforeEach(async () => {
     // Create temporary directory for testing
@@ -117,7 +119,11 @@ describe('Image Tools', () => {
 
     it('should return error for denied paths', async () => {
       // Create a new validator with denied paths
-      const restrictedValidator = new PathValidator([tempDir], [path.join(tempDir, 'subdir')], tempDir);
+      const restrictedValidator = new PathValidator(
+        [tempDir],
+        [path.join(tempDir, 'subdir')],
+        tempDir
+      );
       const mockServer = {
         registerTool: (name: string, _config: Record<string, unknown>, handler: ToolHandler) => {
           handlers.set(name, handler);
