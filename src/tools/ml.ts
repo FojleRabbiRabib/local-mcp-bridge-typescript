@@ -53,9 +53,15 @@ export function registerMLTools(
       inputSchema: z.object({
         path: z.string().optional().describe('Project path (default: workspace root)'),
         name: z.string().optional().describe('Virtual environment name (default: venv)'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ path: projectPath = defaultPath, name = 'venv' }) => {
+    async ({ path: projectPath = defaultPath, name = 'venv', pythonVersion }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -65,7 +71,8 @@ export function registerMLTools(
       }
 
       const absolutePath = validation.resolvedPath!;
-      return executeCommand('python', ['-m', 'venv', name], absolutePath, commandTimeout);
+      const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
+      return executeCommand(pythonCmd, ['-m', 'venv', name], absolutePath, commandTimeout);
     }
   );
 
@@ -115,9 +122,15 @@ export function registerMLTools(
       inputSchema: z.object({
         path: z.string().optional().describe('Project path (default: workspace root)'),
         output: z.string().optional().describe('Save to file (e.g., requirements.txt)'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ path: projectPath = defaultPath, output }) => {
+    async ({ path: projectPath = defaultPath, output, pythonVersion }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -127,11 +140,17 @@ export function registerMLTools(
       }
 
       const absolutePath = validation.resolvedPath!;
+      const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
+      const pipArgs = [pythonCmd, '-m', 'pip', 'freeze'];
+
       if (output) {
         // Save to file
         return new Promise((resolve) => {
           let resolved = false;
-          const proc = spawn('pip', ['freeze'], { cwd: absolutePath, timeout: commandTimeout });
+          const proc = spawn(pipArgs[0], pipArgs.slice(1), {
+            cwd: absolutePath,
+            timeout: commandTimeout,
+          });
           let stdout = '';
           let stderr = '';
 
@@ -195,7 +214,7 @@ export function registerMLTools(
           });
         });
       } else {
-        return executeCommand('pip', ['freeze'], absolutePath, commandTimeout);
+        return executeCommand(pipArgs[0], pipArgs.slice(1), absolutePath, commandTimeout);
       }
     }
   );
@@ -241,19 +260,27 @@ export function registerMLTools(
           .enum(['pytorch', 'tensorflow', 'cuda'])
           .optional()
           .describe('Framework to check'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Only applies to pytorch/tensorflow checks. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ framework = 'cuda' }) => {
+    async ({ framework = 'cuda', pythonVersion }) => {
       if (framework === 'cuda') {
         return executeCommand('nvidia-smi', [], defaultPath, commandTimeout);
       } else if (framework === 'pytorch') {
         const pythonCode =
           'import torch; print(f"CUDA available: {torch.cuda.is_available()}"); print(f"Device count: {torch.cuda.device_count()}"); print(f"Current device: {torch.cuda.current_device() if torch.cuda.is_available() else \'N/A\'}")';
-        return executeCommand('python', ['-c', pythonCode], defaultPath, commandTimeout);
+        const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
+        return executeCommand(pythonCmd, ['-c', pythonCode], defaultPath, commandTimeout);
       } else if (framework === 'tensorflow') {
         const pythonCode =
           'import tensorflow as tf; print(f"GPU devices: {tf.config.list_physical_devices(\'GPU\')}")';
-        return executeCommand('python', ['-c', pythonCode], defaultPath, commandTimeout);
+        const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
+        return executeCommand(pythonCmd, ['-c', pythonCode], defaultPath, commandTimeout);
       }
 
       return {

@@ -185,9 +185,15 @@ export function registerFormattingTools(
           .enum(['javascript', 'typescript', 'python', 'php', 'ruby', 'go', 'rust'])
           .optional()
           .describe('Language (default: auto-detect from extension)'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Only applies to Python files. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ path: filePath, language }) => {
+    async ({ path: filePath, language, pythonVersion }) => {
       const validation = validator.validate(filePath);
       if (!validation.valid) {
         return {
@@ -212,7 +218,12 @@ export function registerFormattingTools(
           };
         }
 
-        const result = await checkSyntax(detectedLanguage, absolutePath, commandTimeout);
+        const result = await checkSyntax(
+          detectedLanguage,
+          absolutePath,
+          commandTimeout,
+          pythonVersion
+        );
         return result;
       } catch (error) {
         return {
@@ -365,12 +376,14 @@ async function fixLintIssues(
 async function checkSyntax(
   language: string,
   filePath: string,
-  timeout: number
+  timeout: number,
+  pythonVersion?: string
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
   const commands: Record<string, string[]> = {
     javascript: ['node', '--check', filePath],
     typescript: ['tsc', '--noEmit', filePath],
-    python: ['python', '-m', 'py_compile', filePath],
+    python: [pythonCmd, '-m', 'py_compile', filePath],
     php: ['php', '-l', filePath],
     ruby: ['ruby', '-c', filePath],
     go: ['go', 'build', '-o', '/dev/null', filePath],

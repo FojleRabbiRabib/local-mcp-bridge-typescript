@@ -75,9 +75,15 @@ export function registerPackageManagerTools(
         path: z.string().optional().describe('Project path (default: workspace root)'),
         packages: z.array(z.string()).optional().describe('Packages to install'),
         requirements: z.boolean().optional().describe('Install from requirements.txt'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ path: projectPath = defaultPath, packages, requirements = false }) => {
+    async ({ path: projectPath = defaultPath, packages, requirements = false, pythonVersion }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -86,14 +92,15 @@ export function registerPackageManagerTools(
         };
       }
 
-      const args = ['install'];
+      const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
+      const args = ['-m', 'pip', 'install'];
       if (requirements) {
         args.push('-r', 'requirements.txt');
       } else if (packages && packages.length > 0) {
         args.push(...packages);
       }
 
-      return executeCommand('pip', args, validation.resolvedPath!, commandTimeout);
+      return executeCommand(pythonCmd, args, validation.resolvedPath!, commandTimeout);
     }
   );
 
@@ -155,9 +162,15 @@ export function registerPackageManagerTools(
       inputSchema: z.object({
         path: z.string().optional().describe('Django project path (default: workspace root)'),
         command: z.string().describe('Management command (e.g., "migrate", "makemigrations")'),
+        pythonVersion: z
+          .string()
+          .optional()
+          .describe(
+            'Python version (e.g., "3.8", "3.10"). Uses system default if not specified. Prefered version 3.8.'
+          ),
       }),
     },
-    async ({ path: projectPath = defaultPath, command }) => {
+    async ({ path: projectPath = defaultPath, command, pythonVersion }) => {
       const validation = validator.validate(projectPath);
       if (!validation.valid) {
         return {
@@ -166,8 +179,9 @@ export function registerPackageManagerTools(
         };
       }
 
+      const pythonCmd = pythonVersion ? `python${pythonVersion}` : 'python3.8';
       const args = ['manage.py', ...command.split(' ')];
-      return executeCommand('python', args, validation.resolvedPath!, commandTimeout);
+      return executeCommand(pythonCmd, args, validation.resolvedPath!, commandTimeout);
     }
   );
 
