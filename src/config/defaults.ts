@@ -30,8 +30,12 @@ export const DEFAULT_CONFIG: Omit<AgentConfig, 'workspace'> = {
     'python3.10',
     'python3.11',
     'python3.12',
+    'test',
   ],
   maxFileSize: 10 * 1024 * 1024, // 10MB
   enableCommandExecution: true,
   commandTimeout: 30000, // 30 seconds
+  tools: {
+    mode: 'auto', // Auto-detect project type and expose relevant tools
+  },
 };

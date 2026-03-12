@@ -38,5 +38,8 @@
   "limits": {
     "maxFileSize": 10485760,
     "commandTimeout": 30000
+  },
+  "tools": {
+    "mode": "auto"
   }
 }

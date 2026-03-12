@@ -8,6 +8,23 @@
  * Note: If both are set, allowedCommands takes precedence (additionalAllowedCommands is ignored).
  *
  * Default commands include: ls, grep, find, cat, head, tail, git, npm, node, python, python3, gradlew, ./gradlew
+ *
+ * Tool Exposure (tools):
+ * - mode: "auto" | "manual" | "all"
+ *   - "auto": Automatically detect project type and expose relevant tools (default)
+ *   - "manual": Only expose tools listed in "enabled" array
+ *   - "all": Expose all available tools (backward compatible)
+ * - enabled: Array of tool categories to enable (only used in "manual" mode)
+ * - disabled: Array of tool categories to disable (used in "auto" mode to exclude specific tools)
+ * - forceProjectTypes: Override auto-detection with specific project types
+ *
+ * Tool categories: filesystem, commands, git, project, formatting, package-manager, tasks, ml, android, images, web
+ *
+ * Examples:
+ * - Auto mode (default): { "tools": { "mode": "auto" } }
+ * - Disable ML/Android: { "tools": { "mode": "auto", "disabled": ["ml", "android"] } }
+ * - Manual mode: { "tools": { "mode": "manual", "enabled": ["filesystem", "git", "package-manager"] } }
+ * - Force Laravel: { "tools": { "mode": "auto", "forceProjectTypes": ["laravel"] } }
  */
 {
   "version": "1.0.0",
@@ -54,5 +71,8 @@
   "limits": {
     "maxFileSize": 10485760,
     "commandTimeout": 30000
+  },
+  "tools": {
+    "mode": "auto"
   }
 }

@@ -262,7 +262,7 @@ app.get('/agent', validateQuery(schemas.agentQuery), async (req: Request, res: R
   try {
     logger.info('Starting agent session', { workspace: resolvedPath, requestId: req.id });
 
-    const server = createAgentServer(agentConfig);
+    const server = await createAgentServer(agentConfig);
     const sseTransport = new SSEServerTransport('/agent', res);
 
     const session: AgentSession = {

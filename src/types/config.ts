@@ -1,3 +1,5 @@
+import { ToolConfig } from './registration.js';
+
 export interface ServerConfig {
   name: string;
   port: number;
@@ -17,6 +19,8 @@ export interface AgentConfig {
   enableCommandExecution: boolean;
   commandTimeout: number;
   workspace: string;
+  /** Tool exposure configuration */
+  tools?: ToolConfig;
 }
 
 export interface ConfigFile {
@@ -27,4 +31,6 @@ export interface ConfigFile {
     maxFileSize?: number;
     commandTimeout?: number;
   };
+  /** Tool configuration at config file level */
+  tools?: ToolConfig;
 }

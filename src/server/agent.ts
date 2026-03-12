@@ -2,19 +2,19 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AgentConfig } from '../types/config.js';
 import { PathValidator } from '../security/validator.js';
 import { CommandValidator } from '../security/command-validator.js';
-import { registerFileSystemTools } from '../tools/filesystem.js';
-import { registerCommandTools } from '../tools/commands.js';
-import { registerGitTools } from '../tools/git.js';
-import { registerProjectTools } from '../tools/project.js';
-import { registerFormattingTools } from '../tools/formatting.js';
-import { registerPackageManagerTools } from '../tools/package-manager.js';
-import { registerTaskTools } from '../tools/tasks.js';
-import { registerMLTools } from '../tools/ml.js';
-import { registerAndroidTools } from '../tools/android.js';
-import { registerImageTools } from '../tools/images.js';
-import { registerWebTools } from '../tools/web.js';
+import { ConditionalToolRegistrar } from '../registration/conditional-registrar.js';
 
-export function createAgentServer(config: AgentConfig): McpServer {
+/**
+ * Create an MCP Agent server with project-type-based tool exposure
+ *
+ * The server automatically detects the project type(s) in the workspace
+ * and only registers relevant tools. For mixed projects (e.g., Laravel + React),
+ * tools from all detected types are available.
+ *
+ * @param config - Agent configuration including workspace path and optional tool config
+ * @returns Configured MCP server instance
+ */
+export async function createAgentServer(config: AgentConfig): Promise<McpServer> {
   // Validate workspace is provided and valid
   if (!config.workspace || config.workspace.trim() === '') {
     throw new Error(
@@ -43,52 +43,11 @@ export function createAgentServer(config: AgentConfig): McpServer {
   );
   const commandValidator = new CommandValidator(config.allowedCommands);
 
-  // Register file system tools
-  registerFileSystemTools(
-    server,
-    pathValidator,
-    config.maxFileSize,
-    config.workspace,
-    config.commandTimeout
-  );
+  // Create conditional tool registrar
+  const registrar = new ConditionalToolRegistrar();
 
-  // Register command execution tools if enabled
-  if (config.enableCommandExecution) {
-    registerCommandTools(
-      server,
-      commandValidator,
-      pathValidator,
-      config.commandTimeout,
-      config.workspace
-    );
-  }
-
-  // Register git tools
-  registerGitTools(server, pathValidator, config.commandTimeout, config.workspace);
-
-  // Register project analysis tools
-  registerProjectTools(server, pathValidator, config.workspace);
-
-  // Register code formatting and linting tools
-  registerFormattingTools(server, pathValidator, config.commandTimeout, config.workspace);
-
-  // Register package manager tools
-  registerPackageManagerTools(server, pathValidator, config.commandTimeout, config.workspace);
-
-  // Register task management tools
-  registerTaskTools(server, pathValidator, config.workspace);
-
-  // Register ML/AI tools
-  registerMLTools(server, pathValidator, config.commandTimeout, config.workspace);
-
-  // Register Android development tools
-  registerAndroidTools(server, pathValidator, config.commandTimeout, config.workspace);
-
-  // Register image reading tools
-  registerImageTools(server, pathValidator);
-
-  // Register web tools
-  registerWebTools(server);
+  // Register tools based on project detection and configuration
+  await registrar.registerTools(server, config, pathValidator, commandValidator);
 
   return server;
 }

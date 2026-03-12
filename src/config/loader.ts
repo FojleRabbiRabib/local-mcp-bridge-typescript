@@ -69,6 +69,11 @@ async function loadConfigFile(filePath: string): Promise<Partial<AgentConfig> | 
       }
     }
 
+    // Load tools configuration
+    if (configFile.tools) {
+      config.tools = configFile.tools;
+    }
+
     return config;
   } catch {
     // Config file doesn't exist or is invalid - that's okay

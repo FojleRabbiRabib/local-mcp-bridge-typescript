@@ -282,6 +282,8 @@ async function buildFileTree(
 }
 
 // Helper: Analyze project
+// Note: This is a detailed analysis for the analyze_project tool.
+// For tool registration, see src/detection/detector.ts which uses similar detection logic.
 async function analyzeProject(projectPath: string): Promise<Record<string, unknown>> {
   const analysis: Record<string, unknown> = {
     path: projectPath,
