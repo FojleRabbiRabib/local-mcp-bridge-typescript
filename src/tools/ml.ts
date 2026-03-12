@@ -4,15 +4,33 @@ import fs from 'fs/promises';
 import path from 'path';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
+import { ProjectType } from '../detection/project-types.js';
 
 export function registerMLTools(
   server: McpServer,
   validator: PathValidator,
   commandTimeout: number,
-  workspace: string
+  workspace: string,
+  projectTypes?: ProjectType[]
 ) {
   // Workspace is now required
   const defaultPath = workspace;
+
+  // Helper to check if ML tools should be registered based on project types
+  const shouldRegister = (): boolean => {
+    if (!projectTypes || projectTypes.length === 0) {
+      return true; // No filtering when no project types specified (backward compatibility)
+    }
+    // Only register for Python projects
+    return projectTypes.some(
+      (t) => t === ProjectType.PYTHON || t === ProjectType.DJANGO || t === ProjectType.FLASK
+    );
+  };
+
+  // If not a Python project, don't register any ML tools
+  if (!shouldRegister()) {
+    return;
+  }
 
   // jupyter_run tool - Run Jupyter notebook cell or file
   server.registerTool(

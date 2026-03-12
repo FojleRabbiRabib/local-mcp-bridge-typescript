@@ -2,33 +2,108 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { spawn } from 'child_process';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
+import { ProjectType } from '../detection/project-types.js';
+
+// Store detected project types for use in helper functions
+let detectedProjectTypes: ProjectType[] | undefined = undefined;
 
 export function registerFormattingTools(
   server: McpServer,
   validator: PathValidator,
   commandTimeout: number,
-  workspace: string
+  workspace: string,
+  projectTypes?: ProjectType[]
 ) {
+  // Store project types for use in helper functions
+  detectedProjectTypes = projectTypes;
+
   // Workspace is now required
   const defaultPath = workspace;
+
+  // Helper to check if a formatter/linter should be available based on project types
+  const isAvailable = (types: ProjectType[]): boolean => {
+    if (!detectedProjectTypes || detectedProjectTypes.length === 0) {
+      return true; // No filtering when no project types specified
+    }
+    return types.some((t) => detectedProjectTypes!.includes(t));
+  };
+
+  // Get available formatters based on project type
+  const getAvailableFormatters = (): string[] => {
+    const formatters: string[] = [];
+    if (
+      isAvailable([ProjectType.NODE_JS, ProjectType.REACT, ProjectType.VUE, ProjectType.NEXTJS])
+    ) {
+      formatters.push('prettier', 'eslint');
+    }
+    if (isAvailable([ProjectType.PYTHON, ProjectType.DJANGO, ProjectType.FLASK])) {
+      formatters.push('black');
+    }
+    if (isAvailable([ProjectType.LARAVEL, ProjectType.PHP])) {
+      formatters.push('pint');
+    }
+    if (isAvailable([ProjectType.RUST])) {
+      formatters.push('rustfmt');
+    }
+    if (isAvailable([ProjectType.GO])) {
+      formatters.push('gofmt');
+    }
+    return formatters;
+  };
+
+  // Get available linters based on project type
+  const getAvailableLinters = (): string[] => {
+    const linters: string[] = [];
+    if (
+      isAvailable([ProjectType.NODE_JS, ProjectType.REACT, ProjectType.VUE, ProjectType.NEXTJS])
+    ) {
+      linters.push('eslint');
+    }
+    if (isAvailable([ProjectType.PYTHON, ProjectType.DJANGO, ProjectType.FLASK])) {
+      linters.push('pylint', 'flake8');
+    }
+    if (isAvailable([ProjectType.RUST])) {
+      linters.push('clippy');
+    }
+    if (isAvailable([ProjectType.GO])) {
+      linters.push('golangci-lint');
+    }
+    return linters;
+  };
+
+  const availableFormatters = getAvailableFormatters();
+  const availableLinters = getAvailableLinters();
 
   // format_code tool - Format code with prettier/eslint
   server.registerTool(
     'format_code',
     {
       description:
-        'Format code using prettier, eslint, black, pint, rustfmt, or gofmt. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
-      inputSchema: z.object({
-        path: z
-          .string()
-          .optional()
-          .describe('File or directory path to format (default: workspace root)'),
-        formatter: z
-          .enum(['prettier', 'eslint', 'black', 'pint', 'rustfmt', 'gofmt'])
-          .optional()
-          .describe('Formatter to use (default: auto-detect)'),
-        write: z.boolean().optional().describe('Write changes to file (default: false, dry-run)'),
-      }),
+        'Format code using available code formatters. By default runs in dry-run mode (preview only). Set write=true to actually modify files. USE THIS to maintain consistent code style.',
+      inputSchema: z
+        .object({
+          path: z
+            .string()
+            .optional()
+            .describe('File or directory path to format (default: workspace root)'),
+          formatter: z
+            .enum([
+              ...(availableFormatters.length > 0 ? availableFormatters : ['prettier']),
+              'auto',
+            ] as const)
+            .optional()
+            .describe('Formatter to use (default: auto-detect)'),
+          write: z.boolean().optional().describe('Write changes to file (default: false, dry-run)'),
+        })
+        .refine(
+          (val) =>
+            !val.formatter ||
+            val.formatter === 'auto' ||
+            availableFormatters.includes(val.formatter),
+          {
+            message: `Formatter not available for this project type. Available: ${availableFormatters.join(', ')}`,
+          }
+        ),
     },
     async ({ path: filePath = defaultPath, formatter, write = false }) => {
       const validation = validator.validate(filePath);
@@ -42,14 +117,15 @@ export function registerFormattingTools(
       const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect formatter if not specified
-        const detectedFormatter = formatter || (await detectFormatter(absolutePath));
+        const detectedFormatter =
+          formatter === 'auto' || !formatter ? await detectFormatter(absolutePath) : formatter;
 
         if (!detectedFormatter) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: 'Error: Could not detect formatter. Please specify one.',
+                text: `Error: Could not detect formatter. Available formatters for this project: ${availableFormatters.join(', ')}`,
               },
             ],
             isError: true,
@@ -72,17 +148,27 @@ export function registerFormattingTools(
     'lint_code',
     {
       description:
-        'Run linter (eslint, pylint, flake8, clippy, golangci-lint) to check code quality and find potential issues. USE THIS before committing to catch errors and maintain code quality.',
-      inputSchema: z.object({
-        path: z
-          .string()
-          .optional()
-          .describe('File or directory path to lint (default: workspace root)'),
-        linter: z
-          .enum(['eslint', 'pylint', 'flake8', 'clippy', 'golangci-lint'])
-          .optional()
-          .describe('Linter to use (default: auto-detect)'),
-      }),
+        'Run linter to check code quality and find potential issues. USE THIS before committing to catch errors and maintain code quality.',
+      inputSchema: z
+        .object({
+          path: z
+            .string()
+            .optional()
+            .describe('File or directory path to lint (default: workspace root)'),
+          linter: z
+            .enum([
+              ...(availableLinters.length > 0 ? availableLinters : ['eslint']),
+              'auto',
+            ] as const)
+            .optional()
+            .describe('Linter to use (default: auto-detect)'),
+        })
+        .refine(
+          (val) => !val.linter || val.linter === 'auto' || availableLinters.includes(val.linter),
+          {
+            message: `Linter not available for this project type. Available: ${availableLinters.join(', ')}`,
+          }
+        ),
     },
     async ({ path: filePath = defaultPath, linter }) => {
       const validation = validator.validate(filePath);
@@ -96,14 +182,15 @@ export function registerFormattingTools(
       const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect linter if not specified
-        const detectedLinter = linter || (await detectLinter(absolutePath));
+        const detectedLinter =
+          linter === 'auto' || !linter ? await detectLinter(absolutePath) : linter;
 
         if (!detectedLinter) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: 'Error: Could not detect linter. Please specify one.',
+                text: `Error: Could not detect linter. Available linters for this project: ${availableLinters.join(', ')}`,
               },
             ],
             isError: true,
@@ -126,16 +213,26 @@ export function registerFormattingTools(
     'fix_lint_issues',
     {
       description: 'Automatically fix linting issues',
-      inputSchema: z.object({
-        path: z
-          .string()
-          .optional()
-          .describe('File or directory path to fix (default: workspace root)'),
-        linter: z
-          .enum(['eslint', 'black', 'rustfmt', 'gofmt'])
-          .optional()
-          .describe('Linter to use (default: auto-detect)'),
-      }),
+      inputSchema: z
+        .object({
+          path: z
+            .string()
+            .optional()
+            .describe('File or directory path to fix (default: workspace root)'),
+          linter: z
+            .enum([
+              ...(availableFormatters.length > 0 ? availableFormatters : ['eslint']),
+              'auto',
+            ] as const)
+            .optional()
+            .describe('Linter to use (default: auto-detect)'),
+        })
+        .refine(
+          (val) => !val.linter || val.linter === 'auto' || availableFormatters.includes(val.linter),
+          {
+            message: `Linter not available for this project type. Available: ${availableFormatters.join(', ')}`,
+          }
+        ),
     },
     async ({ path: filePath = defaultPath, linter }) => {
       const validation = validator.validate(filePath);
@@ -149,14 +246,15 @@ export function registerFormattingTools(
       const absolutePath = validation.resolvedPath!;
       try {
         // Auto-detect linter if not specified
-        const detectedLinter = linter || (await detectLinter(absolutePath));
+        const detectedLinter =
+          linter === 'auto' || !linter ? await detectLinter(absolutePath) : linter;
 
         if (!detectedLinter) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: 'Error: Could not detect linter. Please specify one.',
+                text: `Error: Could not detect linter. Available linters for this project: ${availableLinters.join(', ')}`,
               },
             ],
             isError: true,
@@ -174,7 +272,7 @@ export function registerFormattingTools(
     }
   );
 
-  // check_syntax tool - Validate syntax
+  // check_syntax tool - Validate syntax (always available, works with any file)
   server.registerTool(
     'check_syntax',
     {
@@ -182,7 +280,7 @@ export function registerFormattingTools(
       inputSchema: z.object({
         path: z.string().describe('File path to check'),
         language: z
-          .enum(['javascript', 'typescript', 'python', 'php', 'ruby', 'go', 'rust'])
+          .enum(['javascript', 'typescript', 'python', 'php', 'ruby', 'go', 'rust'] as const)
           .optional()
           .describe('Language (default: auto-detect from extension)'),
         pythonVersion: z
@@ -235,37 +333,71 @@ export function registerFormattingTools(
   );
 }
 
-// Helper: Detect formatter based on file extension and project
+// Helper: Detect formatter based on file extension and project type
 async function detectFormatter(filePath: string): Promise<string | null> {
   const ext = filePath.split('.').pop()?.toLowerCase();
 
+  // Helper to check if a formatter is available for detected project types
+  const isAvailable = (types: ProjectType[]): boolean => {
+    if (!detectedProjectTypes || detectedProjectTypes.length === 0) {
+      return true;
+    }
+    return types.some((t) => detectedProjectTypes!.includes(t));
+  };
+
   if (ext === 'js' || ext === 'jsx' || ext === 'ts' || ext === 'tsx' || ext === 'json') {
-    return 'prettier';
+    return isAvailable([
+      ProjectType.NODE_JS,
+      ProjectType.REACT,
+      ProjectType.VUE,
+      ProjectType.NEXTJS,
+    ])
+      ? 'prettier'
+      : null;
   } else if (ext === 'py') {
-    return 'black';
+    return isAvailable([ProjectType.PYTHON, ProjectType.DJANGO, ProjectType.FLASK])
+      ? 'black'
+      : null;
   } else if (ext === 'php') {
-    return 'pint';
+    return isAvailable([ProjectType.LARAVEL, ProjectType.PHP]) ? 'pint' : null;
   } else if (ext === 'rs') {
-    return 'rustfmt';
+    return isAvailable([ProjectType.RUST]) ? 'rustfmt' : null;
   } else if (ext === 'go') {
-    return 'gofmt';
+    return isAvailable([ProjectType.GO]) ? 'gofmt' : null;
   }
 
   return null;
 }
 
-// Helper: Detect linter based on file extension and project
+// Helper: Detect linter based on file extension and project type
 async function detectLinter(filePath: string): Promise<string | null> {
   const ext = filePath.split('.').pop()?.toLowerCase();
 
+  // Helper to check if a linter is available for detected project types
+  const isAvailable = (types: ProjectType[]): boolean => {
+    if (!detectedProjectTypes || detectedProjectTypes.length === 0) {
+      return true;
+    }
+    return types.some((t) => detectedProjectTypes!.includes(t));
+  };
+
   if (ext === 'js' || ext === 'jsx' || ext === 'ts' || ext === 'tsx') {
-    return 'eslint';
+    return isAvailable([
+      ProjectType.NODE_JS,
+      ProjectType.REACT,
+      ProjectType.VUE,
+      ProjectType.NEXTJS,
+    ])
+      ? 'eslint'
+      : null;
   } else if (ext === 'py') {
-    return 'flake8';
+    return isAvailable([ProjectType.PYTHON, ProjectType.DJANGO, ProjectType.FLASK])
+      ? 'flake8'
+      : null;
   } else if (ext === 'rs') {
-    return 'clippy';
+    return isAvailable([ProjectType.RUST]) ? 'clippy' : null;
   } else if (ext === 'go') {
-    return 'golangci-lint';
+    return isAvailable([ProjectType.GO]) ? 'golangci-lint' : null;
   }
 
   return null;

@@ -3,14 +3,30 @@ import { spawn } from 'child_process';
 import { PathValidator } from '../security/validator.js';
 import * as z from 'zod';
 import fs from 'fs/promises';
+import { ProjectType } from '../detection/project-types.js';
 
 export function registerAndroidTools(
   server: McpServer,
   pathValidator: PathValidator,
   commandTimeout: number,
-  workspace: string
+  workspace: string,
+  projectTypes?: ProjectType[]
 ) {
   const defaultCwd = workspace;
+
+  // Helper to check if Android tools should be registered based on project types
+  const shouldRegister = (): boolean => {
+    if (!projectTypes || projectTypes.length === 0) {
+      return true; // No filtering when no project types specified (backward compatibility)
+    }
+    // Only register for Android projects
+    return projectTypes.includes(ProjectType.ANDROID);
+  };
+
+  // If not an Android project, don't register any Android tools
+  if (!shouldRegister()) {
+    return;
+  }
 
   // Helper function to execute gradlew command
   function executeGradlew(

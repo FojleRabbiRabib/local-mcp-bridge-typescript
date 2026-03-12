@@ -134,7 +134,15 @@ export class ConditionalToolRegistrar {
 
     // Register each enabled tool category
     for (const category of enabledTools) {
-      await this.registerToolCategory(server, category, config, pathValidator, commandValidator);
+      await this.registerToolCategory(
+        server,
+        category,
+        config,
+        pathValidator,
+        commandValidator,
+        detectedTypes,
+        mode
+      );
       log.push(`Registered: ${category}`);
     }
 
@@ -162,7 +170,9 @@ export class ConditionalToolRegistrar {
     category: ToolCategory,
     config: AgentConfigWithTools,
     pathValidator: PathValidator,
-    commandValidator: CommandValidator
+    commandValidator: CommandValidator,
+    detectedTypes: ProjectType[],
+    mode: ToolMode
   ): Promise<void> {
     switch (category) {
       case ToolCategory.FILESYSTEM:
@@ -196,11 +206,23 @@ export class ConditionalToolRegistrar {
         break;
 
       case ToolCategory.FORMATTING:
-        registerFormattingTools(server, pathValidator, config.commandTimeout, config.workspace);
+        registerFormattingTools(
+          server,
+          pathValidator,
+          config.commandTimeout,
+          config.workspace,
+          mode === 'all' ? undefined : detectedTypes
+        );
         break;
 
       case ToolCategory.PACKAGE_MANAGER:
-        registerPackageManagerTools(server, pathValidator, config.commandTimeout, config.workspace);
+        registerPackageManagerTools(
+          server,
+          pathValidator,
+          config.commandTimeout,
+          config.workspace,
+          mode === 'all' ? undefined : detectedTypes
+        );
         break;
 
       case ToolCategory.TASKS:
@@ -208,11 +230,23 @@ export class ConditionalToolRegistrar {
         break;
 
       case ToolCategory.ML:
-        registerMLTools(server, pathValidator, config.commandTimeout, config.workspace);
+        registerMLTools(
+          server,
+          pathValidator,
+          config.commandTimeout,
+          config.workspace,
+          mode === 'all' ? undefined : detectedTypes
+        );
         break;
 
       case ToolCategory.ANDROID:
-        registerAndroidTools(server, pathValidator, config.commandTimeout, config.workspace);
+        registerAndroidTools(
+          server,
+          pathValidator,
+          config.commandTimeout,
+          config.workspace,
+          mode === 'all' ? undefined : detectedTypes
+        );
         break;
 
       case ToolCategory.IMAGES:
